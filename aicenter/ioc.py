@@ -1,98 +1,78 @@
+import os
 import threading
 import time
 import warnings
 
+import cv2
 import numpy
-
-from aicenter import Result
+import redis
 
 warnings.filterwarnings("ignore")
 
 from enum import IntEnum
+from collections import namedtuple, defaultdict
 
 from devioc import models, log
 import gepics
 
-from . import AiCenter
-
+from . import utils
 logger = log.get_module_logger('aicenter')
 
+# Result Type
+Result = namedtuple('Result', 'type x y w h score')
 
-class EnableType(IntEnum):
-    DISABLED, ENABLED = range(2)
+CONF_THRESH, NMS_THRESH = 0.25, 0.25
 
 
 class StatusType(IntEnum):
-    INVALID, VALID = range(2)
-
-
-class ObjectType(IntEnum):
-    NONE, LOOP, CRYSTAL, PIN = range(4)
+    VALID, INVALID = range(2)
 
 
 # Create your models here. Modify the example below as appropriate
-class AiCenterModel(models.Model):
-    enable = models.Enum('enable', choices=EnableType, default=1, mdel=0, desc="Enable/Disable")
-
-    # Loop
-    loop_box = models.Array('loop:box', type=int, length=4, desc="Loop Coordinates")
-    loop_score = models.Float('loop:score', default=0.0, mdel=0, desc='Loop Score')
-    loop_id = models.Integer('loop:id', default=0, mdel=0, desc='Loop ID')
-    loop_valid = models.Enum('loop:valid', choices=StatusType, default=StatusType.INVALID, desc="Loop Valid")
-
-    # Crystal
-    crystal_box = models.Array('crystal:box', type=int, length=4, desc="Crystal Coordinates")
-    crystal_score = models.Float('crystal:score', default=0.0, mdel=0, desc='Crystal Score')
-    crystal_id = models.Integer('crystal:id', default=0, mdel=0, desc='Crystal ID')
-    crystal_valid = models.Enum('crystal:valid', choices=StatusType, default=StatusType.INVALID, desc="Crystal Valid")
-
-    # Extra Crystals
-    crystals = models.Array('extra:box', type=int, desc="Extra Boxes")
-    scores = models.Array('extra:score', type=float, desc="Extra Scores")
-    extra_ids = models.Array('extra:id', type=int, desc="Extra IDs")
-    num_crystals = models.Integer('extra:valid', default=0, min_val=0, max_val=64, desc="Number of Extra Crystals")
-
-    # Pin
-    pin_box = models.Array('pin:box', type=int, length=4, desc="Pin Coordinates")
-    pin_score = models.Float('pin:score', default=0.0, mdel=0, desc='Pin Score')
-    pin_id = models.Integer('pin:id', default=0, mdel=0, desc='Pin ID')
-    pin_valid = models.Enum('pin:valid', choices=StatusType, default=StatusType.INVALID, desc="Pin Valid")
+class AiCenter(models.Model):
+    # Loop bounding box
+    x = models.Integer('x', default=0, desc='X')
+    y = models.Integer('y', default=0, desc='Y')
+    w = models.Integer('w', default=0, desc='Width')
+    h = models.Integer('h', default=0, desc='Height')
+    score = models.Float('score', default=0.0, desc='Reliability')
+    label = models.String('label', default='', desc='Object Type')
+    status = models.Enum('status', choices=StatusType, desc="Status")
+    # Many-object centers
+    objects_x = models.Array('objects:x', type=int, desc="Objects X")
+    objects_y = models.Array('objects:y', type=int, desc="Objects Y")
+    # objects_type = models.Array('objects:type', type=int, desc="Objects Type")
+    objects_score = models.Array('objects:score', type=float, desc="Objects Score")
+    objects_valid = models.Integer('objects:valid', default=0, desc="Valid objects")
 
 
-class IOCApp(AiCenter):
-    def __init__(self, device, model, video, threshold=None):
-        """
-        AiCenter IOC
-        :param device:  device root name for PVs
-        :param model:  YOLO Model path
-        :param video:  Video URI
-        """
-        super().__init__(model=model, video=video, threshold=threshold, tracking=True)
-        logger.info(f'device={device!r}, model={model!r}, video={video!r}')
+class AiCenterApp(object):
+    def __init__(self, device, model=None, server=None, camera=None):
+        logger.info(f'device={device!r}, model={model!r}, server={server!r}, camera={camera!r}')
         self.running = False
-        self.enabled = True
-        self.tracking = False
-        self.ioc = AiCenterModel(device, callbacks=self)
-        self.pvs = {
-            'loop': (
-                self.ioc.loop_box,
-                self.ioc.loop_score,
-                self.ioc.loop_valid,
-                self.ioc.loop_id
-            ),
-            'crystal': (
-                self.ioc.crystal_box,
-                self.ioc.crystal_score,
-                self.ioc.crystal_valid,
-                self.ioc.crystal_id
-            ),
-            'pin': (
-                self.ioc.pin_box,
-                self.ioc.pin_score,
-                self.ioc.pin_valid,
-                self.ioc.pin_id
-            ),
+        self.ioc = AiCenter(device, callbacks=self)
+        self.key = f'{camera}:JPG'
+        self.server = server
+        self.video = None
+        self.model_path = model
+
+        # prepare neural network for detection
+        with open(os.path.join(model, 'yolov3.names'), 'r', encoding='utf-8') as fobj:
+            names = [line.strip() for line in fobj.readlines()]
+
+        self.darknet = {
+            'weights': os.path.join(model, 'yolov3.weights'),
+            'config': os.path.join(model, 'yolov3.cfg'),
+            'names': names,
         }
+
+        self.net = cv2.dnn.readNetFromDarknet(self.darknet['config'], self.darknet['weights'])
+        self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
+        self.layers = self.net.getLayerNames()
+        self.output_layers = self.net.getUnconnectedOutLayersNames()
+        # self.output_layers = [self.layers[i[0] - 1] for i in self.net.getUnconnectedOutLayers()]
+
         self.start_monitor()
 
     def start_monitor(self):
@@ -100,56 +80,113 @@ class IOCApp(AiCenter):
         monitor_thread = threading.Thread(target=self.video_monitor, daemon=True)
         monitor_thread.start()
 
+    def get_frame(self):
+        try:
+            data = self.video.get(self.key)
+            image = numpy.frombuffer(data, numpy.uint8)
+            frame = cv2.imdecode(image, cv2.IMREAD_COLOR)
+        except TypeError as err:
+            logger.error('Unable to grab frame')
+            return
+        else:
+            return frame
+
+    def process_results(self, width, height, outputs):
+        class_ids, confidences, bboxes = [], [], []
+        for output in outputs:
+            for detection in output:
+                scores = detection[5:]
+                class_id = numpy.argmax(scores)
+                confidence = scores[class_id]
+
+                if confidence > CONF_THRESH:
+                    cx, cy, w, h = (detection[0:4] * numpy.array([width, height, width, height])).astype(int)
+                    x = int(cx - w / 2)
+                    y = int(cy - h / 2)
+
+                    bboxes.append([x, y, int(w), int(h)])
+                    confidences.append(float(confidence))
+                    class_ids.append(int(class_id))
+
+        if bboxes:
+            results = defaultdict(list)
+            indices = cv2.dnn.NMSBoxes(bboxes, confidences, CONF_THRESH, NMS_THRESH).flatten()
+            nms_boxes = [(bboxes[i], confidences[i], class_ids[i]) for i in indices]
+            for bbox, score, class_id in nms_boxes:
+                x, y, w, h = bbox
+                label = self.darknet['names'][class_id]
+                logger.debug(f'{label} found at: {x} {y} [{w} {h}], prob={score}')
+                results[label].append(Result(label, x, y, w, h, score))
+            for label, llist in results.items():
+                results[label] = sorted(llist, key=lambda result: result.score, reverse=True)
+            self.ioc.status.put(StatusType.VALID)
+            return results
+        else:
+            self.ioc.status.put(StatusType.INVALID)
+            self.ioc.score.put(0.0)
+
+    @staticmethod
+    def process_features(frame):
+        """
+        Process frame using traditional image processing techniques to detect loop
+        :param frame: Frame to process
+        :return: True if loop found
+        """
+        info = utils.find_loop(frame)
+        if 'loop-x' in info:
+            logger.debug(
+                f'Loop found at: {info["loop-x"]} {info["loop-y"]} [{info["loop-width"]} {info["loop-height"]}]'
+            )
+            return {'loop': [Result('loop', info['loop-x'], info['loop-y'], info['loop-width'], info['loop-height'], 0.5)]}
+
     def video_monitor(self):
         gepics.threads_init()
         self.running = True
+        self.video = redis.Redis(host=self.server, port=6379, db=0)
         while self.running:
-            if self.ioc.enable.get() != EnableType.ENABLED:
-                self.ioc.loop_valid.put(StatusType.INVALID)
-                self.ioc.crystal_valid.put(StatusType.INVALID)
-                self.ioc.pin_valid.put(StatusType.INVALID)
-                self.ioc.num_crystals.put(0)
-                time.sleep(0.1)
-                continue
-
             frame = self.get_frame()
-            results = self.process_frame(frame)
+            if frame is not None and frame.mean() > 50:
+                height, width = frame.shape[:2]
+                blob = cv2.dnn.blobFromImage(frame, 0.00392, (416, 416), swapRB=True, crop=False)
+                self.net.setInput(blob)
+                outputs = self.net.forward(self.output_layers)
+                results = self.process_results(width, height, outputs)
+                if not results:
+                    # attempt regular image processing
+                    results = self.process_features(frame)
 
-            for label, objects in results.items():
-
-                if not objects:
-                    validity = StatusType.INVALID
-                    best = Result(type=label, x1=0, y1=0, x2=0, y2=0, score=0)
-                    extra = []
+                if results:
+                    if 'loop' in results:
+                        # Only return highest-scoring loop
+                        result = results['loop'][0]
+                        self.ioc.x.put(result.x)
+                        self.ioc.y.put(result.y)
+                        self.ioc.w.put(result.w)
+                        self.ioc.h.put(result.h)
+                        self.ioc.label.put(result.type)
+                        self.ioc.score.put(result.score)
+                        self.ioc.status.put(StatusType.VALID)
+                    xs, ys, scores = [], [], []
+                    for label, reslist in results.items():
+                        if label == 'loop':
+                            continue
+                        xs += [result.x + int(result.w / 2) for result in reslist]
+                        ys += [result.y + int(result.h / 2) for result in reslist]
+                        scores += [result.score for result in reslist]
+                    if xs:
+                        self.ioc.objects_x.put(numpy.array(xs))
+                        self.ioc.objects_y.put(numpy.array(ys))
+                        self.ioc.objects_score.put(numpy.array(scores))
+                        self.ioc.objects_valid.put(len(xs))
+                    else:
+                        self.ioc.objects_valid.put(0)
                 else:
-                    validity = StatusType.VALID
-                    best = objects[0]
-                    extra = objects[1:]
-
-                box_pv, score_pv, valid_pv, id_pv = self.pvs.get(label, (None, None, None, None))
-                if box_pv and score_pv and valid_pv and id_pv:
-                    valid_pv.put(validity)  # Put this first
-                    score_pv.put(best.score)
-                    id_pv.put(best.id)
-                    box_pv.put(numpy.array([best.x1, best.y1, best.x2, best.y2]).astype(int))
-
-                if label == 'crystal' and extra:
-                    num_crystals = len(extra)
-                    boxes = numpy.array([[obj.x1, obj.y1, obj.x2, obj.y2] for obj in extra]).ravel().astype(int)
-                    scores = numpy.array([obj.score for obj in extra]).ravel()
-                    ids = numpy.array([obj.id for obj in extra]).ravel()
-                    self.ioc.num_crystals.put(num_crystals)  # put this first
-                    self.ioc.scores.put(scores)
-                    self.ioc.extra_ids.put(ids)
-                    self.ioc.crystals.put(boxes)
-                else:
-                    self.ioc.num_crystals.put(0)
-
-                if label == 'crystal' and best.score:
-                    pass
-
-    def do_enable(self, pv, value, ioc):
-        self.enabled = (value == EnableType.ENABLED)
+                    self.ioc.status.put(StatusType.INVALID)
+                    self.ioc.score.put(0.0)
+            else:
+                self.ioc.status.put(StatusType.INVALID)
+                self.ioc.score.put(0.0)
+            time.sleep(0.001)
 
     def shutdown(self):
         # needed for proper IOC shutdown
