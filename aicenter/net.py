@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os.path
+from collections import defaultdict, namedtuple
 from pathlib import Path
 from typing import Iterator
 
@@ -11,25 +12,73 @@ import yaml
 
 from . import utils
 
+# Result Type
+Result = namedtuple('Result', 'type x y w h score')
+
+
 
 class Net:
     size = None
     net = None
     names = None
 
-    def __init__(self, model_path, threshold):
+    def __init__(self, model_path, conf_threshold: float, nms_threshold: float):
         self.model_path = model_path
-        self.threshold = threshold
+        self.conf_threshold = conf_threshold
+        self.nms_threshold = nms_threshold
+        self.load_model()
+        self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
+        self.output_layers = self.net.getUnconnectedOutLayersNames()
 
-    def parse_output(self, output, width, height) -> Iterator[tuple[list[int], float, int]]:
+    def load_model(self):
+        """Model-specific loading"""
         raise NotImplementedError
 
+    def parse_output(self, output, width, height) -> Iterator[tuple[list[int], float, int]]:
+        """Model-specific output handling"""
+        raise NotImplementedError
+
+    def predict(self, image: numpy.ndarray) -> numpy.ndarray:
+        blob = cv2.dnn.blobFromImage(image, 0.00392, (self.size, self.size), swapRB=True, crop=False)
+        self.net.setInput(blob)
+        try:
+            outputs = self.net.forward(self.output_layers)
+        except cv2.error as err:
+            logging.exception(err)
+            # Perhaps CUDA is not setup, switch backend
+            self.net.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+            self.net.net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL_FP16)
+            outputs = numpy.array([])
+        return outputs
+
+    def process_results(self, width, height, outputs):
+        class_ids, confidences, bboxes = [], [], []
+        for output in outputs:
+            for bb, conf, cid in self.parse_output(output, width=width, height=height):
+                bboxes.append(bb)
+                confidences.append(conf)
+                class_ids.append(cid)
+
+        if bboxes:
+            results = defaultdict(list)
+            indices = cv2.dnn.NMSBoxes(bboxes, confidences, self.conf_threshold, self.nms_threshold).flatten()
+            nms_boxes = [(bboxes[i], confidences[i], class_ids[i]) for i in indices]
+            for bbox, score, class_id in nms_boxes:
+                x, y, w, h = bbox
+                label = self.names[class_id]
+                logging.debug(f'{label} found at: {x} {y} [{w} {h}], prob={score}')
+                results[label].append(Result(label, x, y, w, h, score))
+            for label, llist in results.items():
+                results[label] = sorted(llist, key=lambda result: result.score, reverse=True)
+            return results
+        return {}
 
 class DarkNet(Net):
     size = 416
 
-    def __init__(self, model_path, threshold):
-        super().__init__(model_path, threshold)
+    def load_model(self):
+        model_path = str(self.model_path)
         with open(os.path.join(model_path, 'yolov3.names'), 'r', encoding='utf-8') as fobj:
             self.names = [line.strip() for line in fobj.readlines()]
         self.net = cv2.dnn.readNetFromDarknet(
@@ -43,7 +92,7 @@ class DarkNet(Net):
             class_id = numpy.argmax(scores)
             confidence = scores[class_id]
 
-            if confidence > self.threshold:
+            if confidence > self.conf_threshold:
                 cx, cy, w, h = (detection[0:4] * numpy.array([width, height, width, height])).astype(int)
                 coords = [utils.nearest_int(v, 5) for v in [cx - w / 2, cy - h / 2, w, h]]
                 yield coords, float(confidence), int(class_id)
@@ -52,9 +101,8 @@ class DarkNet(Net):
 class ONNXNet(Net):
     size = 640
 
-    def __init__(self, model_path, threshold):
-        super().__init__(model_path, threshold)
-        self.model_path = Path(model_path)
+    def load_model(self):
+        self.model_path = Path(self.model_path)
         yaml_files = list(self.model_path.glob('*.yaml'))
         onnx_files = list(self.model_path.glob('*.onnx'))
 
@@ -74,7 +122,7 @@ class ONNXNet(Net):
             class_id = numpy.argmax(scores)
             confidence = scores[class_id]
 
-            if confidence > self.threshold:
+            if confidence > self.conf_threshold:
                 scale = numpy.array([width, height, width, height]) / self.size
                 step = int(numpy.ceil(scale.max()))
                 cx, cy, w, h = (detection[0:4] * scale).astype(int)
@@ -82,11 +130,11 @@ class ONNXNet(Net):
                 yield coords, float(confidence), int(class_id)
 
 
-def load_model(model_path: str | Path, threshold: float) -> Net:
+def load_model(model_path: str or Path, conf_threshold: float, nms_threshold: float) -> Net:
     for net_class in [DarkNet, ONNXNet]:
         try:
             logging.info(f'Loading {net_class.__name__} model from {model_path}')
-            net = net_class(model_path, threshold)
+            net = net_class(model_path, conf_threshold, nms_threshold)
         except Exception as err:
             logging.exception(err)
             continue
