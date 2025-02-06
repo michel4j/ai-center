@@ -121,8 +121,8 @@ class AiCenterApp(AiCenter):
                                 result for result in res_list
                                 if utils.inside_bbox(result.x, result.y, loop_bbox)
                             ]
-                        xs += [result.x + int(result.w / 2) for result in valid_xtals]
-                        ys += [result.y + int(result.h / 2) for result in valid_xtals]
+                        xs += [result.cx for result in valid_xtals]
+                        ys += [result.cy for result in valid_xtals]
                         scores += [result.score for result in valid_xtals]
                         types += [object_type for _ in valid_xtals]
                     elif object_type == ObjectType.LOOP:
