@@ -3,7 +3,7 @@ from collections import defaultdict
 import cv2
 import numpy
 
-from aicenter import utils
+from aicenter import img, utils
 from aicenter.log import get_module_logger
 from aicenter.net import load_model, Result
 from aicenter.sam import TrackingSAM
@@ -38,28 +38,6 @@ class AiCenter:
             return frame
 
 
-    @staticmethod
-    def process_features(frame):
-        """
-        Process frame using traditional image processing techniques to detect loop
-        :param frame: Frame to process
-        :return: True if loop found
-        """
-        info = utils.find_loop(frame)
-        if 'loop-x' in info:
-            logger.debug(
-                f'Loop found at: {info["loop-x"]} {info["loop-y"]} [{info["loop-width"]} {info["loop-height"]}]'
-            )
-            w = min(info["loop-width"], 50)
-            h = min(info["loop-height"], 50)
-            return {
-                'loop': [
-                    Result('img-loop', info['x']-w//2, info['y']-h//2, w, h, 0.25)
-                ]
-            }
-
-        return {}
-
     def process_frame(self, frame):
         if frame is not None:
             # Object detection
@@ -87,6 +65,6 @@ class AiCenter:
                 results['loop'] = sorted(results['loop'], key=lambda result: result.score, reverse=True)
             # Image processing fallback
             if not results:
-                results = self.process_features(frame)
+                results = img.process_frame(frame)
             return results
         return {}
