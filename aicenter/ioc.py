@@ -54,7 +54,7 @@ class AiCenterModel(models.Model):
 
 
 class AiCenterApp(AiCenter):
-    def __init__(self, device, model=None, server=None, camera=None):
+    def __init__(self, device, model=None, server=None, camera=None, conf_thresh=CONF_THRESH):
         """
         AiCenter IOC
         :param device:  device root name for PVs
@@ -62,7 +62,7 @@ class AiCenterApp(AiCenter):
         :param server:  Redis server for video stream
         :param camera:  Camera name for video stream
         """
-        super().__init__(model=model, server=server, camera=camera)
+        super().__init__(model=model, server=server, camera=camera, conf_thresh=conf_thresh)
         logger.info(f'device={device!r}, model={model!r}, server={server!r}, camera={camera!r}')
         self.running = False
         self.enabled = True
