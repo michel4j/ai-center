@@ -22,11 +22,23 @@ pip install ai-center
 
 You can manage the instance daemon through procServ, by telneting to the configured port. 
 
+Installation
+============
+
+```
+pip install .[ioc]
+```
+
 OpenCV
 ======
 
 For best performance, a version of `python-opencv` compiled with support for CUDA and cuDNN along
 with a compatible GPU should be used.
+
+Segment Anything
+================
+
+To enable segmentation tracking with SAM2, install with `[sam]` extra.
 
 Testing
 =======
@@ -34,9 +46,8 @@ Testing
 The `test/inference.py` file can be used to test the inference / model performance without running
 a full IOC application.  To obtain a copy of the trained model weights, contact the authors.
 
-Create an environment with `requirements-test.txt` and install `aicenter` without dependencies:
+Install `aicenter` without `[ioc]` dependencies:
 
 ```
-pip install -r requirements-test.txt
-pip install . --no-deps
+pip install .[test]
 ```
