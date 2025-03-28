@@ -38,10 +38,10 @@ class AiCenterModel(models.Model):
     label = models.String('label', default='', desc='Object Type')
     status = models.Enum('status', choices=StatusType, desc="Status")
     enable = models.Enum('enable', choices=EnableType, default=1, desc="Enable/Disable")
-    calc = models.CalcOut(
-        'enable:calc', calc='$(calc)',
-        inpa="$(inpa) CPP", inpb="$(inpb) CPP",
-        out="$(device):enable PP NMS", desc="External Enable/Disable"
+    enabled = models.Calc(
+        'enabled', calc='A=$(on_value)?B:0',
+        inpa="$(enable) CP NMS", inpb="$(device):enable CP NMS",
+        desc="External Enable/Disable"
     )
 
     # Many-object centers, scores and validity
@@ -52,13 +52,26 @@ class AiCenterModel(models.Model):
 
 
 class AiCenterApp(AiCenter):
-    def __init__(self, device, model=None, server=None, camera=None):
+    def __init__(self, device, model=None, server=None, camera=None, enable=None, on_value=1):
+        """
+        AiCenter IOC
+        :param device:  device root name for PVs
+        :param model:  Model for image processing
+        :param server:  Redis server for video stream
+        :param camera:  Camera name for video stream
+        :param enable:  PV name for external enable/disable
+        :param on_value: Value of enable PV for enabled state
+        """
         super().__init__(model=model, server=server, camera=camera)
         logger.info(f'device={device!r}, model={model!r}, server={server!r}, camera={camera!r}')
         self.running = False
-        self.enabled = True
-        self.ioc = AiCenterModel(device, callbacks=self)
 
+        macros = {
+            'enable': f'{device}:enable' if not enable else enable,
+            'on_value': on_value,
+        }
+
+        self.ioc = AiCenterModel(device, callbacks=self, macros=macros)
         self.start_monitor()
 
     def start_monitor(self):
@@ -72,7 +85,7 @@ class AiCenterApp(AiCenter):
         self.video = redis.Redis(host=self.server, port=6379, db=0)
         while self.running:
 
-            if not self.enabled:
+            if self.ioc.enabled.get() != EnableType.ENABLED:
                 if self.ioc.score.get() > 0:
                     self.ioc.status.put(StatusType.INVALID)     # Reset object count
                     self.ioc.score.put(0.0)                     # Reset score to invalidate current object
@@ -113,9 +126,6 @@ class AiCenterApp(AiCenter):
                 self.ioc.status.put(StatusType.INVALID)
                 self.ioc.score.put(numpy.random.uniform(0, 0.01))
             time.sleep(0.001)
-
-    def do_enable(self, pv, value, ioc):
-        self.enabled = (value == EnableType.ENABLED)
 
     def shutdown(self):
         # needed for proper IOC shutdown
