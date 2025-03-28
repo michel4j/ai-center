@@ -38,12 +38,6 @@ class AiCenterModel(models.Model):
     label = models.String('label', default='', desc='Object Type')
     status = models.Enum('status', choices=StatusType, desc="Status")
     enable = models.Enum('enable', choices=EnableType, default=1, desc="Enable/Disable")
-    enabled = models.Calc(
-        'enabled', calc='B',
-        inpa="$(enable) CP NMS",
-        inpb="$(device):enable CP NMS",
-        desc="External Enable/Disable"
-    )
 
     # Many-object centers, scores and validity
     objects_x = models.Array('objects:x', type=int, desc="Objects X")
@@ -53,7 +47,7 @@ class AiCenterModel(models.Model):
 
 
 class AiCenterApp(AiCenter):
-    def __init__(self, device, model=None, server=None, camera=None, enable=None, on_value=1):
+    def __init__(self, device, model=None, server=None, camera=None):
         """
         AiCenter IOC
         :param device:  device root name for PVs
@@ -67,12 +61,7 @@ class AiCenterApp(AiCenter):
         logger.info(f'device={device!r}, model={model!r}, server={server!r}, camera={camera!r}')
         self.running = False
 
-        macros = {
-            'enable': f'{device}:enable' if not enable else enable,
-            'on_value': on_value,
-        }
-
-        self.ioc = AiCenterModel(device, callbacks=self, macros=macros)
+        self.ioc = AiCenterModel(device, callbacks=self)
         self.start_monitor()
 
     def start_monitor(self):
@@ -86,7 +75,7 @@ class AiCenterApp(AiCenter):
         self.video = redis.Redis(host=self.server, port=6379, db=0)
         while self.running:
 
-            if self.ioc.enabled.get() != EnableType.ENABLED:
+            if self.ioc.enable.get() != EnableType.ENABLED:
                 if self.ioc.score.get() > 0:
                     self.ioc.status.put(StatusType.INVALID)     # Reset object count
                     self.ioc.score.put(0.0)                     # Reset score to invalidate current object

@@ -19,8 +19,6 @@ parser.add_argument('--device', type=str, help='Device Name', required=True)
 parser.add_argument('--model', type=str, help='Darknet Model Path', required=True)
 parser.add_argument('--server', type=str, help='Video Server', required=True)
 parser.add_argument('--camera', type=str, help='Camera ID', required=True)
-parser.add_argument('--enable', type=str, help='Gate PV', required=False)
-parser.add_argument('--on', type=int, help='Gate PV Value', required=False, default=1)
 
 
 if __name__ == '__main__':
@@ -31,10 +29,7 @@ if __name__ == '__main__':
         log.log_to_console(logging.INFO)
 
     # initialize App
-    app = ioc.AiCenterApp(
-        args.device, model=args.model, server=args.server, camera=args.camera,
-        enable=args.enable, on_value=args.on
-    )
+    app = ioc.AiCenterApp(args.device, model=args.model, server=args.server, camera=args.camera)
     reactor.addSystemEventTrigger('before', 'shutdown', app.shutdown)   # make sure app is properly shutdown
     sys.exit(
         reactor.run()
