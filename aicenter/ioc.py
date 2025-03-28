@@ -38,11 +38,15 @@ class AiCenterModel(models.Model):
     label = models.String('label', default='', desc='Object Type')
     status = models.Enum('status', choices=StatusType, desc="Status")
     enable = models.Enum('enable', choices=EnableType, default=1, desc="Enable/Disable")
+    calc = models.CalcOut(
+        'enable:calc', calc='$(calc)',
+        inpa="$(inpa) CPP", inpb="$(inpb) CPP",
+        out="$(device):enable PP NMS", desc="External Enable/Disable"
+    )
 
-    # Many-object centers
+    # Many-object centers, scores and validity
     objects_x = models.Array('objects:x', type=int, desc="Objects X")
     objects_y = models.Array('objects:y', type=int, desc="Objects Y")
-    # objects_type = models.Array('objects:type', type=int, desc="Objects Type")
     objects_score = models.Array('objects:score', type=float, desc="Objects Score")
     objects_valid = models.Integer('objects:valid', default=0, desc="Valid objects")
 
@@ -69,6 +73,10 @@ class AiCenterApp(AiCenter):
         while self.running:
 
             if not self.enabled:
+                if self.ioc.score.get() > 0:
+                    self.ioc.status.put(StatusType.INVALID)     # Reset object count
+                    self.ioc.score.put(0.0)                     # Reset score to invalidate current object
+                    self.ioc.objects_valid.put(0)               # Reset object count
                 time.sleep(0.1)
                 continue
 
