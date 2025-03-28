@@ -39,8 +39,9 @@ class AiCenterModel(models.Model):
     status = models.Enum('status', choices=StatusType, desc="Status")
     enable = models.Enum('enable', choices=EnableType, default=1, desc="Enable/Disable")
     enabled = models.Calc(
-        'enabled', calc='A=$(on_value)?B:0',
-        inpa="$(enable) CP NMS", inpb="$(device):enable CP NMS",
+        'enabled', calc='B',
+        inpa="$(enable) CP NMS",
+        inpb="$(device):enable CP NMS",
         desc="External Enable/Disable"
     )
 

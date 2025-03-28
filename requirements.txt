@@ -1,5 +1,5 @@
 devioc
-opencv-python
+opencv-conrib-python==4.11.0.86
 gepics
 redis
 numpy
