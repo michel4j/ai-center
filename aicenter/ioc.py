@@ -39,9 +39,10 @@ class AiCenterModel(models.Model):
     status = models.Enum('status', choices=StatusType, desc="Status")
     enable = models.Enum('enable', choices=EnableType, default=1, desc="Enable/Disable")
 
-    # Many-object centers, scores and validity
+    # Many-object centers
     objects_x = models.Array('objects:x', type=int, desc="Objects X")
     objects_y = models.Array('objects:y', type=int, desc="Objects Y")
+    # objects_type = models.Array('objects:type', type=int, desc="Objects Type")
     objects_score = models.Array('objects:score', type=float, desc="Objects Score")
     objects_valid = models.Integer('objects:valid', default=0, desc="Valid objects")
 
@@ -54,14 +55,13 @@ class AiCenterApp(AiCenter):
         :param model:  Model for image processing
         :param server:  Redis server for video stream
         :param camera:  Camera name for video stream
-        :param enable:  PV name for external enable/disable
-        :param on_value: Value of enable PV for enabled state
         """
         super().__init__(model=model, server=server, camera=camera)
         logger.info(f'device={device!r}, model={model!r}, server={server!r}, camera={camera!r}')
         self.running = False
-
+        self.enabled = True
         self.ioc = AiCenterModel(device, callbacks=self)
+
         self.start_monitor()
 
     def start_monitor(self):
@@ -116,6 +116,9 @@ class AiCenterApp(AiCenter):
                 self.ioc.status.put(StatusType.INVALID)
                 self.ioc.score.put(numpy.random.uniform(0, 0.01))
             time.sleep(0.001)
+
+    def do_enable(self, pv, value, ioc):
+        self.enabled = (value == EnableType.ENABLED)
 
     def shutdown(self):
         # needed for proper IOC shutdown
