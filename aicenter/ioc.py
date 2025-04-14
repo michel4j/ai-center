@@ -99,7 +99,7 @@ class AiCenterApp(AiCenter):
                     self.ioc.w.put(result.w)
                     self.ioc.h.put(result.h)
                     self.ioc.label.put(result.type)
-                    self.ioc.score.put(result.score)
+                    self.ioc.score.put(result.score - numpy.random.uniform(0, 0.001))
                     self.ioc.status.put(StatusType.VALID)
 
                 xs, ys, scores, types = [], [], [], []
@@ -132,7 +132,7 @@ class AiCenterApp(AiCenter):
                     self.ioc.objects_valid.put(0)
             else:
                 self.ioc.status.put(StatusType.INVALID)
-                self.ioc.score.put(numpy.random.uniform(0, 0.01))
+                self.ioc.score.put(0.0)
             time.sleep(0.001)
 
     def do_enable(self, pv, value, ioc):
