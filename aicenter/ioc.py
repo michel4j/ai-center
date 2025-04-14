@@ -111,8 +111,14 @@ class AiCenterApp(AiCenter):
                         'crystal': ObjectType.CRYSTAL,
                         'pin': ObjectType.PIN
                     }.get(label, ObjectType.NONE)
-                    xs += [result.x + int(result.w / 2) for result in res_list]
-                    ys += [result.y + int(result.h / 2) for result in res_list]
+                    if label in ['loop', 'crystal']:
+                        # Loop and crystal are centered in the bounding box
+                        xs += [result.x + int(result.w / 2) for result in res_list]
+                        ys += [result.y + int(result.h / 2) for result in res_list]
+                    else:
+                        # Pin centered at the end horizontally, and vertically in the middle
+                        xs += [result.x + result.w for result in res_list]
+                        ys += [result.y + int(result.h / 2) for result in res_list]
                     scores += [result.score for result in res_list]
                     types += [object_type for result in res_list]
 
