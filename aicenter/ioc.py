@@ -27,6 +27,10 @@ class StatusType(IntEnum):
     VALID, INVALID = range(2)
 
 
+class ObjectType(IntEnum):
+    NONE, LOOP, CRYSTAL, PIN = range(4)
+
+
 # Create your models here. Modify the example below as appropriate
 class AiCenterModel(models.Model):
     # Loop bounding box
@@ -42,7 +46,7 @@ class AiCenterModel(models.Model):
     # Many-object centers
     objects_x = models.Array('objects:x', type=int, desc="Objects X")
     objects_y = models.Array('objects:y', type=int, desc="Objects Y")
-    # objects_type = models.Array('objects:type', type=int, desc="Objects Type")
+    objects_type = models.Array('objects:type', type=int, desc="Objects Type")
     objects_score = models.Array('objects:score', type=float, desc="Objects Score")
     objects_valid = models.Integer('objects:valid', default=0, desc="Valid objects")
 
@@ -98,17 +102,25 @@ class AiCenterApp(AiCenter):
                     self.ioc.score.put(result.score)
                     self.ioc.status.put(StatusType.VALID)
 
-                xs, ys, scores = [], [], []
+                xs, ys, scores, types = [], [], [], []
                 for label, res_list in results.items():
                     if label == 'loop':
                         continue
+                    object_type = {
+                        'loop': ObjectType.LOOP,
+                        'crystal': ObjectType.CRYSTAL,
+                        'pin': ObjectType.PIN
+                    }
                     xs += [result.x + int(result.w / 2) for result in res_list]
                     ys += [result.y + int(result.h / 2) for result in res_list]
                     scores += [result.score for result in res_list]
+                    types += [object_type for result in res_list]
+
                 if xs:
                     self.ioc.objects_x.put(numpy.array(xs))
                     self.ioc.objects_y.put(numpy.array(ys))
                     self.ioc.objects_score.put(numpy.array(scores))
+                    self.ioc.objects_type.put(numpy.array(types))
                     self.ioc.objects_valid.put(len(xs))
                 else:
                     self.ioc.objects_valid.put(0)
