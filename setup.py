@@ -5,7 +5,7 @@ with open('requirements.txt') as f:
 
 setup(
     name='aicenter',
-    version='2025.3.4',
+    version='2025.3.5',
     packages=['aicenter'],
     url='',
     license='MIT',
