@@ -110,7 +110,7 @@ class AiCenterApp(AiCenter):
                         'loop': ObjectType.LOOP,
                         'crystal': ObjectType.CRYSTAL,
                         'pin': ObjectType.PIN
-                    }
+                    }.get(label, ObjectType.NONE)
                     xs += [result.x + int(result.w / 2) for result in res_list]
                     ys += [result.y + int(result.h / 2) for result in res_list]
                     scores += [result.score for result in res_list]
