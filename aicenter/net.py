@@ -9,7 +9,7 @@ import cv2
 import numpy
 import yaml
 
-import utils
+from . import utils
 
 
 class Net:
