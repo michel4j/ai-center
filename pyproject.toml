@@ -34,7 +34,7 @@ packages = [
 version = "0.0.0"
 
 [tool.poetry.scripts]
-app.server = "aicenter.scripts:server_main"
+"app.server" = "aicenter.scripts:server_main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
