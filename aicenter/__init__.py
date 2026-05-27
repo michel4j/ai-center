@@ -30,8 +30,8 @@ class AiCenter:
 
         # prepare neural network for detection
         self.net = load_model(model, CONF_THRESH)
-        self.net.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-        self.net.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
+        #self.net.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        #self.net.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
         self.layers = self.net.net.getLayerNames()
         self.output_layers = self.net.net.getUnconnectedOutLayersNames()
 
@@ -42,7 +42,7 @@ class AiCenter:
             frame = cv2.imdecode(image, cv2.IMREAD_COLOR)
         except TypeError as err:
             logger.error('Unable to grab frame')
-            return
+            return None
         else:
             return frame
 
@@ -66,6 +66,7 @@ class AiCenter:
             for label, llist in results.items():
                 results[label] = sorted(llist, key=lambda result: result.score, reverse=True)
             return results
+        return {}
 
     @staticmethod
     def process_features(frame):
@@ -79,11 +80,15 @@ class AiCenter:
             logger.debug(
                 f'Loop found at: {info["loop-x"]} {info["loop-y"]} [{info["loop-width"]} {info["loop-height"]}]'
             )
+            w = min(info["loop-width"], 50)
+            h = min(info["loop-height"], 50)
             return {
                 'loop': [
-                    Result('img-loop', info['x']-25, info['y']-25, 50, 50, 0.25 + numpy.random.uniform(0, 0.001))
+                    Result('img-loop', info['x']-w//2, info['y']-h//2, w, h, 0.25)
                 ]
             }
+
+        return {}
 
     def process_frame(self, frame):
         if frame is not None:
@@ -96,3 +101,4 @@ class AiCenter:
                 # attempt regular image processing
                 results = self.process_features(frame)
             return results
+        return {}

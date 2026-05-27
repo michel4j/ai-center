@@ -5,6 +5,8 @@ import warnings
 import numpy
 import redis
 
+import utils
+
 warnings.filterwarnings("ignore")
 
 from enum import IntEnum
@@ -16,7 +18,7 @@ from . import AiCenter
 
 logger = log.get_module_logger('aicenter')
 
-CONF_THRESH, NMS_THRESH = 0.25, 0.25
+CONF_THRESH, NMS_THRESH = 0.15, 0.15
 
 
 class EnableType(IntEnum):
@@ -99,33 +101,47 @@ class AiCenterApp(AiCenter):
                     self.ioc.w.put(result.w)
                     self.ioc.h.put(result.h)
                     self.ioc.label.put(result.type)
-                    self.ioc.score.put(result.score - numpy.random.uniform(0, 0.001))
+                    self.ioc.score.put(result.score - numpy.random.uniform(0, 0.0001))
                     self.ioc.status.put(StatusType.VALID)
 
                 xs, ys, scores, types = [], [], [], []
                 for label, res_list in results.items():
-                    if label == 'loop':
-                        continue
                     object_type = {
                         'loop': ObjectType.LOOP,
                         'crystal': ObjectType.CRYSTAL,
                         'pin': ObjectType.PIN
                     }.get(label, ObjectType.NONE)
-                    if label in ['loop', 'crystal']:
+
+                    if object_type == ObjectType.CRYSTAL:
+                        # Add all crystals when no loop is present, otherwise must be inside loop
+                        valid_xtals = res_list
+                        if 'loop' in results:
+                            loop_bbox = (self.ioc.x.get(), self.ioc.y.get(), self.ioc.w.get(), self.ioc.h.get())
+                            valid_xtals = [
+                                result for result in res_list
+                                if utils.inside_bbox(result.x, result.y, loop_bbox)
+                            ]
+                        xs += [result.x + int(result.w / 2) for result in valid_xtals]
+                        ys += [result.y + int(result.h / 2) for result in valid_xtals]
+                        scores += [result.score for result in valid_xtals]
+                        types += [object_type for _ in valid_xtals]
+                    elif object_type == ObjectType.LOOP:
                         # Loop and crystal are centered in the bounding box
                         xs += [result.x + int(result.w / 2) for result in res_list]
                         ys += [result.y + int(result.h / 2) for result in res_list]
-                    else:
-                        # Pin centered at the end horizontally, and vertically in the middle
-                        xs += [result.x + result.w for result in res_list]
-                        ys += [result.y + int(result.h / 2) for result in res_list]
-                    scores += [result.score for result in res_list]
-                    types += [object_type for result in res_list]
+                        scores += [result.score for result in res_list]
+                        types += [object_type for _ in res_list]
+                    elif object_type == ObjectType.PIN:
+                        # Pin centered at 90% horizontally, and 50% vertically
+                        xs += [result.x + int(result.w * 0.9) for result in res_list]
+                        ys += [result.y + int(result.h * 0.5) for result in res_list]
+                        scores += [result.score for result in res_list]
+                        types += [object_type for _ in res_list]
 
                 if xs:
-                    self.ioc.objects_x.put(numpy.array(xs))
-                    self.ioc.objects_y.put(numpy.array(ys))
-                    self.ioc.objects_score.put(numpy.array(scores))
+                    self.ioc.objects_x.put(numpy.array(xs).astype(int))
+                    self.ioc.objects_y.put(numpy.array(ys).astype(int))
+                    self.ioc.objects_score.put(numpy.array(scores).astype(float))
                     self.ioc.objects_type.put(numpy.array(types))
                     self.ioc.objects_valid.put(len(xs))
                 else:
@@ -133,7 +149,7 @@ class AiCenterApp(AiCenter):
             else:
                 self.ioc.status.put(StatusType.INVALID)
                 self.ioc.score.put(0.0)
-            time.sleep(0.001)
+            time.sleep(0.01)
 
     def do_enable(self, pv, value, ioc):
         self.enabled = (value == EnableType.ENABLED)

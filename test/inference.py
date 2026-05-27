@@ -35,8 +35,8 @@ class AiCenterApp(AiCenter):
             results = self.process_frame(frame)
 
             if results is not None:
-                for label, reslist in results.items():
-                    for res in reslist:
+                for label, result_list in results.items():
+                    for res in result_list:
                         cv2.rectangle(frame, (res.x, res.y), (res.x+res.w, res.y+res.h), (255, 0, 0), 1)
                         cv2.putText(frame, f'{res.type}:{res.score:0.2f}', (res.x, res.y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                                     (255, 0, 0), 1, cv2.LINE_AA)
