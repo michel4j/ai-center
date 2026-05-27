@@ -30,7 +30,7 @@ Testing
 =======
 
 The `test/inference.py` file can be used to test the inference / model performance without running
-a full IOC application.
+a full IOC application.  To obtain a copy of the trained model weights, contact the authors.
 
 Create an environment with `requirements-test.txt` and install `aicenter` without dependencies:
 
