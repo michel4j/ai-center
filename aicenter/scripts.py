@@ -1,0 +1,36 @@
+import logging
+import argparse
+import sys
+
+# Twisted boiler-plate code.
+from twisted.internet import gireactor
+gireactor.install()
+from twisted.internet import reactor
+
+# add the project to the python path and import it
+from devioc import log
+from aicenter import ioc
+
+
+def server_main():
+    # Setup single argument for verbose logging
+    parser = argparse.ArgumentParser(description='Ai Centering')
+    parser.add_argument('-v', action='store_true', help='Verbose Logging')
+    parser.add_argument('--device', type=str, help='Device Name', required=True)
+    parser.add_argument('--model', type=str, help='Darknet Model Path', required=True)
+    parser.add_argument('--server', type=str, help='Video Server', required=True)
+    parser.add_argument('--camera', type=str, help='Camera ID', required=True)
+
+    args = parser.parse_args()
+    if args.v:
+        log.log_to_console(logging.DEBUG)
+    else:
+        log.log_to_console(logging.INFO)
+
+    # initialize App
+    app = ioc.AiCenterApp(args.device, model=args.model, server=args.server, camera=args.camera)
+    reactor.addSystemEventTrigger('before', 'shutdown', app.shutdown)   # make sure app is properly shutdown
+    sys.exit(
+        reactor.run()
+    )   # run main-loop
+

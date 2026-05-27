@@ -2,8 +2,7 @@
 name = "ai-center"
 dynamic = ["version"]
 license = "MIT"
-version = "0.0.0"
-description = "Automated Sample Alignment for MX"
+description = "Automated Sample Alignment for MX using a YOLO Model"
 authors = [
     {name = "Michel Fodje",email = "michel.fodje@lightsource.ca"}
 ]
@@ -16,7 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "devioc",
-    "opencv-contrib-python",
+    "opencv-contrib-python>=4.11.0.86",
     "gepics",
     "redis",
     "numpy",
@@ -32,6 +31,11 @@ Issues = "https://github.com/michel4j/ai-center/issues"
 packages = [
     { include = "aicenter", from = "." },
 ]
+version = "0.0.0"
+
+[tool.poetry.scripts]
+app.server = "aicenter.scripts:server_main"
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
 build-backend = "poetry_dynamic_versioning.backend"
@@ -40,7 +44,7 @@ build-backend = "poetry_dynamic_versioning.backend"
 poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
 
 [tool.poetry-dynamic-versioning]
-enable = false
+enable = true
 vcs = "git"
 format = "{base}.{revision}{distance}"
 

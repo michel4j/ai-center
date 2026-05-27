@@ -2,18 +2,21 @@
 aicenter
 ========
 
-A python based Soft IOC Server.
+A python based Soft IOC Server for Sample Alignment using a YOLO model.
 
 Usage
 =====
-In order to use "aicenter", you need have a functioning install of python-devioc and its requirements and procServ.
- 
-1. Create a directory for the IOC instance. The directory should be named exactly like the device name but the location
-   is irelevant. 
-2. Copy the init-template file to /etc/init.d and rename it as appropriate.
-3. Edit the file from (2) above to reflect your environment and to set all the required instance parameters
-4. Enable the init file using your system commands. For example, `systemctl enable <init-file-name>`.
-5. Start the init file using your system commands. For example `systemctl start <init-file-name>`.
+
+```
+pip install ai-center
+```
+
+1. Create a directory for the IOC instance.
+2. Copy the start.sh file from the `deploy` directory into this directory.
+3. Copy the ai-centering.service unit file from the `deploy` into your /etc/systemd/system directory.
+4. Edit the files from (2) and (3) above to reflect your environment and to set all the required instance parameters
+4. Enable the unit file using your system commands. For example, `systemctl enable ai-centering`.
+5. Start the init file using your system commands. For example `systemctl start ai-centering`.
 
 You can manage the instance daemon through procServ, by telneting to the configured port. 
 

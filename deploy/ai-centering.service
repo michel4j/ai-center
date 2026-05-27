@@ -1,0 +1,10 @@
+[Unit]
+Description=AI Centering
+After=remote-fs.target
+Wants=remote-fs.target
+
+[Service]
+ExecStart=/ioc/instance/AIC0000-001/start.sh
+
+[Install]
+WantedBy=multi-user.target
