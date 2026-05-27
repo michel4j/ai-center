@@ -8,6 +8,8 @@ Usage
 =====
 
 ```
+python -m venv my-venv
+source my-venv/bin/activate
 pip install ai-center
 ```
 
