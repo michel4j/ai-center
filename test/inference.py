@@ -77,6 +77,7 @@ class AiCenterImagesApp(AiCenterApp):
         else:
             return frame
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotate a video stream using a pre-trained object detection model')
     parser.add_argument('--model', type=str, help='Path to model directory',

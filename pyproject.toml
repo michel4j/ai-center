@@ -1,0 +1,46 @@
+[project]
+name = "ai-center"
+dynamic = ["version"]
+license = "MIT"
+version = "0.0.0"
+description = "Automated Sample Alignment for MX"
+authors = [
+    {name = "Michel Fodje",email = "michel.fodje@lightsource.ca"}
+]
+readme = "README.md"
+requires-python = ">=3.11,<4"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "devioc",
+    "opencv-contrib-python",
+    "gepics",
+    "redis",
+    "numpy",
+    "Twisted",
+    "pyyaml",
+]
+
+[project.urls]
+Homepage = "https://github.com/michel4j/ai-center"
+Issues = "https://github.com/michel4j/ai-center/issues"
+
+[tool.poetry]
+packages = [
+    { include = "aicenter", from = "." },
+]
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
+
+[tool.poetry.requires-plugins]
+poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+
+[tool.poetry-dynamic-versioning]
+enable = false
+vcs = "git"
+format = "{base}.{revision}{distance}"
+
