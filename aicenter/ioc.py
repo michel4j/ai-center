@@ -5,8 +5,6 @@ import warnings
 import numpy
 import redis
 
-import utils
-
 warnings.filterwarnings("ignore")
 
 from enum import IntEnum
@@ -14,7 +12,9 @@ from enum import IntEnum
 from devioc import models, log
 import gepics
 
+from . import utils
 from . import AiCenter
+
 
 logger = log.get_module_logger('aicenter')
 

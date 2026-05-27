@@ -9,7 +9,7 @@ from twisted.internet import reactor
 
 # add the project to the python path and import it
 from devioc import log
-from aicenter import ioc
+from . import ioc
 
 
 def server_main():
