@@ -30,8 +30,8 @@ class AiCenter:
 
         # prepare neural network for detection
         self.net = load_model(model, CONF_THRESH)
-        #self.net.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-        #self.net.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
+        self.net.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        self.net.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
         self.layers = self.net.net.getLayerNames()
         self.output_layers = self.net.net.getUnconnectedOutLayersNames()
 
@@ -95,8 +95,16 @@ class AiCenter:
             height, width = frame.shape[:2]
             blob = cv2.dnn.blobFromImage(frame, 0.00392, (self.net.size, self.net.size), swapRB=True, crop=False)
             self.net.net.setInput(blob)
-            outputs = self.net.net.forward(self.output_layers)
-            results = self.process_results(width, height, outputs)
+            try:
+                outputs = self.net.net.forward(self.output_layers)
+            except cv2.error as err:
+                logger.exception(err)
+                # Perhaps CUDA is not setup, switch backend
+                self.net.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+                self.net.net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL_FP16)
+                results = {}
+            else:
+                results = self.process_results(width, height, outputs)
             if not results:
                 # attempt regular image processing
                 results = self.process_features(frame)
