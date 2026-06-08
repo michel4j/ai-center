@@ -124,7 +124,7 @@ def process_frame(frame):
         h = min(info["loop-height"], 50)
         return {
             'loop': [
-                Result('img-loop', info['x'] - w // 2, info['y'] - h // 2, w, h, 0.25)
+                Result('img-loop', int(info['x'] - w // 2), int(info['y'] - h // 2), int(w), int(h), 0.25)
             ]
         }
 
