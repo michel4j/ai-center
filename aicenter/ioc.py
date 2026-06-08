@@ -18,8 +18,6 @@ from . import AiCenter
 
 logger = log.get_module_logger('aicenter')
 
-CONF_THRESH, NMS_THRESH = 0.15, 0.15
-
 
 class EnableType(IntEnum):
     DISABLED, ENABLED = range(2)
@@ -54,7 +52,7 @@ class AiCenterModel(models.Model):
 
 
 class AiCenterApp(AiCenter):
-    def __init__(self, device, model=None, server=None, camera=None):
+    def __init__(self, device, model=None, server=None, camera=None, conf_thresh=CONF_THRESH):
         """
         AiCenter IOC
         :param device:  device root name for PVs
@@ -62,7 +60,7 @@ class AiCenterApp(AiCenter):
         :param server:  Redis server for video stream
         :param camera:  Camera name for video stream
         """
-        super().__init__(model=model, server=server, camera=camera)
+        super().__init__(model=model, server=server, camera=camera, conf_thresh=conf_thresh)
         logger.info(f'device={device!r}, model={model!r}, server={server!r}, camera={camera!r}')
         self.running = False
         self.enabled = True
@@ -121,8 +119,8 @@ class AiCenterApp(AiCenter):
                                 result for result in res_list
                                 if utils.inside_bbox(result.x, result.y, loop_bbox)
                             ]
-                        xs += [result.x + int(result.w / 2) for result in valid_xtals]
-                        ys += [result.y + int(result.h / 2) for result in valid_xtals]
+                        xs += [result.cx for result in valid_xtals]
+                        ys += [result.cy for result in valid_xtals]
                         scores += [result.score for result in valid_xtals]
                         types += [object_type for _ in valid_xtals]
                     elif object_type == ObjectType.LOOP:

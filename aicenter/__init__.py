@@ -1,39 +1,38 @@
-from collections import namedtuple, defaultdict
+from collections import defaultdict
 
 import cv2
 import numpy
 
-from aicenter import utils
-from aicenter.net import load_model
+from aicenter import img, utils
+from aicenter.log import get_module_logger
+from aicenter.net import load_model, Result
 
 try:
-    from devioc import log
-except ImportError:
-    import logging
+    from aicenter.sam import TrackingSAM
+except ModuleNotFoundError as e:
+    TrackingSAM = None
 
-    logger = logging.getLogger('aicenter')
-else:
-    logger = log.get_module_logger('aicenter')
-
-# Result Type
-Result = namedtuple('Result', 'type x y w h score')
+logger = get_module_logger(__name__)
 
 CONF_THRESH, NMS_THRESH = 0.125, 0.25
 
 
 class AiCenter:
-    def __init__(self, model=None, server=None, camera=None):
+    def __init__(self, model=None, server=None, camera=None, conf_thresh=CONF_THRESH):
         self.key = f'{camera}:JPG'
         self.server = server
         self.video = None
         self.model_path = model
+        conf_thresh = conf_thresh if conf_thresh is not None else CONF_THRESH
 
         # prepare neural network for detection
-        self.net = load_model(model, CONF_THRESH)
-        self.net.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-        self.net.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
-        self.layers = self.net.net.getLayerNames()
-        self.output_layers = self.net.net.getUnconnectedOutLayersNames()
+        self.net = load_model(model, conf_thresh, NMS_THRESH)
+
+        # setup SAM2 for segmentation
+        if TrackingSAM is not None:
+            self.sam = TrackingSAM()
+        else:
+            self.sam = None
 
     def get_frame(self):
         try:
@@ -46,67 +45,29 @@ class AiCenter:
         else:
             return frame
 
-    def process_results(self, width, height, outputs):
-        class_ids, confidences, bboxes = [], [], []
-        for output in outputs:
-            for bb, conf, cid in self.net.parse_output(output, width=width, height=height):
-                bboxes.append(bb)
-                confidences.append(conf)
-                class_ids.append(cid)
-
-        if bboxes:
-            results = defaultdict(list)
-            indices = cv2.dnn.NMSBoxes(bboxes, confidences, CONF_THRESH, NMS_THRESH).flatten()
-            nms_boxes = [(bboxes[i], confidences[i], class_ids[i]) for i in indices]
-            for bbox, score, class_id in nms_boxes:
-                x, y, w, h = bbox
-                label = self.net.names[class_id]
-                logger.debug(f'{label} found at: {x} {y} [{w} {h}], prob={score}')
-                results[label].append(Result(label, x, y, w, h, score))
-            for label, llist in results.items():
-                results[label] = sorted(llist, key=lambda result: result.score, reverse=True)
-            return results
-        return {}
-
-    @staticmethod
-    def process_features(frame):
-        """
-        Process frame using traditional image processing techniques to detect loop
-        :param frame: Frame to process
-        :return: True if loop found
-        """
-        info = utils.find_loop(frame)
-        if 'loop-x' in info:
-            logger.debug(
-                f'Loop found at: {info["loop-x"]} {info["loop-y"]} [{info["loop-width"]} {info["loop-height"]}]'
-            )
-            w = min(info["loop-width"], 50)
-            h = min(info["loop-height"], 50)
-            return {
-                'loop': [
-                    Result('img-loop', info['x']-w//2, info['y']-h//2, w, h, 0.25)
-                ]
-            }
-
-        return {}
 
     def process_frame(self, frame):
         if frame is not None:
+            # Object detection
             height, width = frame.shape[:2]
-            blob = cv2.dnn.blobFromImage(frame, 0.00392, (self.net.size, self.net.size), swapRB=True, crop=False)
-            self.net.net.setInput(blob)
-            try:
-                outputs = self.net.net.forward(self.output_layers)
-            except cv2.error as err:
-                logger.exception(err)
-                # Perhaps CUDA is not setup, switch backend
-                self.net.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-                self.net.net.setPreferableTarget(cv2.dnn.DNN_TARGET_OPENCL_FP16)
-                results = {}
-            else:
-                results = self.process_results(width, height, outputs)
+            outputs = self.net.predict(frame)
+            results = self.net.process_results(width, height, outputs)
+            # Prompt segmentation with objects
+            if self.sam:
+                if results:
+                    self.sam.track_objects(frame, results, width, height)
+                # Segmentation
+                if self.sam.tracked_objects:
+                    mask_outputs = self.sam.predict(frame)
+                    mask_results = self.sam.process_results(*mask_outputs)
+                    if not results:
+                        results = defaultdict(list)
+                    for label in mask_results.keys():
+                        results[label].extend(mask_results[label])
+                        # Keep list sorted by score
+                        results[label] = sorted(results[label], key=lambda result: result.score, reverse=True)
+            # Image processing fallback
             if not results:
-                # attempt regular image processing
-                results = self.process_features(frame)
+                results = img.process_frame(frame)
             return results
         return {}

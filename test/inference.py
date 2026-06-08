@@ -10,9 +10,15 @@ import cv2
 import redis
 
 from aicenter import AiCenter
+from aicenter.log import get_module_logger
+try:
+    from aicenter.sam import MaskResult, show_mask_from_result
+except ModuleNotFoundError:
+    MaskResult = None
+    show_mask_from_result = None
 
 warnings.filterwarnings("ignore")
-logger = logging.getLogger('aicenter')
+logger = get_module_logger("inference")
 
 CONF_THRESH, NMS_THRESH = 0.25, 0.25
 
@@ -20,12 +26,12 @@ CONF_THRESH, NMS_THRESH = 0.25, 0.25
 class AiCenterApp(AiCenter):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        print(f'model={self.model_path!r}, server={self.server!r}, camera={self.key!r}')
+        logger.info(f'model={self.model_path!r}, server={self.server!r}, camera={self.key!r}')
         self.running = False
         if self.server:
             self.video = redis.Redis(host=self.server, port=6379, db=0)
 
-    def run(self, scale=0.5):
+    def run(self, scale=1.0):
         self.running = True
         while self.running:
             raw_frame = self.get_frame()
@@ -34,14 +40,16 @@ class AiCenterApp(AiCenter):
             frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
             results = self.process_frame(frame)
 
-            if results is not None:
-                for label, result_list in results.items():
-                    for res in result_list:
+            if results:
+                for label, objects in results.items():
+                    for res in objects:
                         cv2.rectangle(frame, (res.x, res.y), (res.x+res.w, res.y+res.h), (255, 0, 0), 1)
                         cv2.putText(frame, f'{res.type}:{res.score:0.2f}', (res.x, res.y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                                     (255, 0, 0), 1, cv2.LINE_AA)
+                        if self.sam and isinstance(res, MaskResult):
+                            frame = show_mask_from_result(frame, res)
 
-            cv2.imshow('Frame', frame)
+            cv2.imshow(os.path.split(self.model_path)[-1], frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -51,7 +59,7 @@ class AiCenterImagesApp(AiCenterApp):
     def __init__(self, **kwargs):
         images_dir = kwargs.pop('images')
         self.images = self.frame_generator(images_dir)
-        print(f"Simulating stream from {images_dir!r}")
+        logger.info(f"Simulating stream from {images_dir!r}")
         super().__init__(**kwargs)
 
     @staticmethod
@@ -87,9 +95,13 @@ if __name__ == '__main__':
     parser.add_argument('--camera', type=str, help='Redis camera ID',
                         default="0030180F06E5")
     parser.add_argument('--images', type=str, help='Path to directory of images (simulate stream)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
+    parser.add_argument('--confidence', type=float, help='Object Detection Confidence Threshold')
     args = parser.parse_args()
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
     if args.images:
-        app = AiCenterImagesApp(model=args.model, images=args.images)
+        app = AiCenterImagesApp(model=args.model, images=args.images, conf_thresh=args.confidence)
     else:
-        app = AiCenterApp(model=args.model, server=args.server, camera=args.camera)
+        app = AiCenterApp(model=args.model, server=args.server, camera=args.camera, conf_thresh=args.confidence)
     app.run()

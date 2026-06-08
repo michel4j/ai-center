@@ -1,10 +1,15 @@
 [project]
 name = "ai-center"
 dynamic = ["version"]
-license = "MIT"
+license = "MIT AND Apache-2.0"
+license-files = [
+    "LICENSE",
+    "aicenter/lib/LICENSE",
+]
 description = "Automated Sample Alignment for MX using a YOLO Model"
 authors = [
-    {name = "Michel Fodje",email = "michel.fodje@lightsource.ca"}
+    {name = "Michel Fodje",email = "michel.fodje@lightsource.ca"},
+    {name = 'Stuart Read', email = 'stuart.read@lightsource.ca'}
 ]
 readme = "README.md"
 requires-python = ">=3.11,<4"
@@ -14,14 +19,19 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "devioc",
-    "opencv-contrib-python>=4.11.0.86",
-    "gepics",
     "redis",
     "numpy",
-    "Twisted",
+    "opencv-python",
     "pyyaml",
 ]
+[project.optional-dependencies]
+ioc = [
+    "devioc",
+    "gepics",
+    "Twisted",
+]
+test = ["opencv-contrib-python>=4.11.0.86"]
+sam = ["torch"]
 
 [project.urls]
 Homepage = "https://github.com/michel4j/ai-center"
