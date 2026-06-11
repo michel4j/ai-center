@@ -1,10 +1,12 @@
-import sysconfig
+from __future__ import annotations
+
 import time
 import uuid
 from collections import deque, defaultdict
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy
@@ -21,19 +23,24 @@ except ModuleNotFoundError as e:
     logger.error(f"Missing SAM2 import: {e}")
     raise e
 
-SAM2_MODEL_LARGE = Path(sysconfig.get_path('data')) / "sam_weights/sam2_hiera_large.pt"
+SAM_MODEL = "sam2.1_hiera_large.pt"
+
 
 @dataclass
 class MaskResult(Result):
     mask: numpy.ndarray = None
     contours: numpy.ndarray = None
 
+
 class SAM2:
-    def __init__(self, model_path: Path=SAM2_MODEL_LARGE):
-        self.model_path = model_path
+    predictor: Any
+    device: torch.device
+
+    def __init__(self, model_path: Path | str):
+        self.model = Path(model_path)
         self.setup_device()
         self.predictor = self.setup_predictor()
-        logger.info(f"Loading sam model from {model_path}")
+        logger.info(f"Loading sam model from {self.model}")
 
     def setup_device(self):
         # select the device for computation
@@ -57,10 +64,7 @@ class SAM2:
     def predict_input_boxes(self, image: numpy.ndarray, input_boxes: numpy.ndarray):
         self.predictor.set_image(image)
         masks, scores, _ = self.predictor.predict(
-            point_coords=None,
-            point_labels=None,
-            box=input_boxes,
-            multimask_output=False,
+            point_coords=None, point_labels=None, box=input_boxes, multimask_output=False,
         )
         return masks, scores
 
@@ -89,10 +93,13 @@ class SAM2:
                             logger.debug(f"Segmentation mask centroid: {x_centroid}, {y_centroid}")
                         x, y, w, h = cv2.boundingRect(max_contour)
                         logger.debug(f'{label} found at: {x} {y} [{w} {h}], prob={score:.2f}')
-                        results[label].append(MaskResult(label, x, y, w, h, score, x_centroid, y_centroid, mask, contours))
+                        results[label].append(
+                            MaskResult(label, x, y, w, h, score, x_centroid, y_centroid, mask, contours)
+                        )
         for label, llist in results.items():
             results[label] = sorted(llist, key=lambda result: result.score, reverse=True)
         return results
+
 
 @dataclass
 class TrackedObject:
@@ -114,25 +121,25 @@ class TrackedObject:
 
 
 class TrackingSAM(SAM2):
-    def __init__(self, model_path: Path=SAM2_MODEL_LARGE):
+    def __init__(self, model_path):
         super().__init__(model_path)
         self.tracked_objects = []
         self.last_input_boxes = defaultdict(partial(deque, maxlen=10))
 
     def setup_predictor(self):
-        _, sammodel = make_samv2_from_original_state_dict(str(self.model_path))
-        sammodel.to(device=self.device)
+        _, sam_model = make_samv2_from_original_state_dict(str(self.model))
+        sam_model.to(device=self.device)
 
-        return sammodel
+        return sam_model
 
     def track_input_boxes(self, image: numpy.ndarray, input_boxes: numpy.ndarray, norm=None, label="default"):
         last_input_boxes = self.last_input_boxes[label]
         last_input_boxes.appendleft(input_boxes)
-        if (not (len(last_input_boxes) == last_input_boxes.maxlen) or
-                not all(numpy.allclose(input_boxes, a, rtol=0.1) for a in last_input_boxes)):
+        if (not (len(last_input_boxes) == last_input_boxes.maxlen) or not all(
+            numpy.allclose(input_boxes, a, rtol=0.1) for a in last_input_boxes
+        )):
             return
 
-        # TODO multiple boxes
         if norm is not None:
             input_boxes = input_boxes / norm
         input_boxes = input_boxes.reshape(-1, 2, 2)
@@ -142,22 +149,20 @@ class TrackingSAM(SAM2):
             init_encoded_img, input_boxes, [], []
         )
         self.tracked_objects.append(
-            TrackedObject(prompt_memory_encodings=[init_mem],
-                          prompt_object_pointers=[init_ptr],
-                          label=label,
-                          ))
+            TrackedObject(prompt_memory_encodings=[init_mem], prompt_object_pointers=[init_ptr], label=label, )
+        )
         logger.debug(f"Added new tracked {label} object, {len(self.tracked_objects)} total")
 
-    def track_objects(self, image: numpy.ndarray, results: dict[list[Result]], width, height):
+    def track_objects(self, image: numpy.ndarray, results: dict[str, list[Result]], width, height):
         if not self.predictor:
             return
         norm = numpy.array([width, height, width, height])
         tracked_labels = [t.label for t in self.tracked_objects]
         for label, objects in results.items():
-            # Only one object per label
+            # Only track if not already tracking this label
             if label not in tracked_labels and objects:
                 # Take only the best object for each label
-                xyxy = [[o.x, o.y, o.x + o.w, o.y + o.h] for o in objects[:1]]
+                xyxy = [[o.x1, o.y1, o.x2, o.y2] for o in objects[:1]]
                 input_boxes = numpy.atleast_2d(numpy.array(xyxy))
                 self.track_input_boxes(image, input_boxes, norm, label)
 
@@ -170,8 +175,7 @@ class TrackingSAM(SAM2):
             t1 = time.perf_counter()
             encoded_imgs_list, _, _ = self.predictor.encode_image(image)
             obj_score, mask_pred, mem_enc, obj_ptr = self.predictor.step_video_masking(
-                encoded_imgs_list, *tracked_object.video_masking_inputs,
-            )
+                encoded_imgs_list, *tracked_object.video_masking_inputs, )
             t2 = time.perf_counter()
             logger.debug(f"Inference took {round(1000 * (t2 - t1))} ms, score={obj_score[0][0]:.2f}")
 
@@ -187,11 +191,7 @@ class TrackingSAM(SAM2):
 
             # Create mask for display
             dispres_mask = torch.nn.functional.interpolate(
-                mask_pred,
-                size=image.shape[0:2],
-                mode="bilinear",
-                align_corners=False,
-            )
+                mask_pred, size=image.shape[0:2], mode="bilinear", align_corners=False, )
             disp_mask = ((dispres_mask > 0.0).byte() * 255).cpu().numpy().squeeze()
 
             masks.append(disp_mask)
@@ -202,7 +202,6 @@ class TrackingSAM(SAM2):
 
 
 def show_masks(image, masks):
-
     def show_mask_from_predict(image, mask, random_color=False, borders=True, centroid=True, bbox=True):
         if random_color:
             rng = numpy.random.default_rng()
@@ -231,10 +230,12 @@ def show_masks(image, masks):
                 else:
                     logger.debug(f"Segmentation mask centroid: {x_centroid}, {y_centroid}")
                     # Draw a marker centered at centroid coordinates
-                    image = cv2.drawMarker(image, (x_centroid, y_centroid),(255, 0, 0, 1), thickness=1, markerSize=20)
+                    image = cv2.drawMarker(image, (x_centroid, y_centroid), (255, 0, 0, 1), thickness=1, markerSize=20)
             if bbox and max_contour is not None:
                 rect = cv2.boundingRect(max_contour)
-                image = cv2.rectangle(image, (rect[0], rect[1]), (rect[0] + rect[2], rect[1] + rect[3]), (0, 0, 0, 1), thickness=1)
+                image = cv2.rectangle(
+                    image, (rect[0], rect[1]), (rect[0] + rect[2], rect[1] + rect[3]), (0, 0, 0, 1), thickness=1
+                )
         return cv2.addWeighted(image, 1, mask_image, 1, 0)
 
     # if only one result, not enough dimensions
@@ -243,6 +244,7 @@ def show_masks(image, masks):
         for mask in masks:
             image = show_mask_from_predict(image, mask.squeeze(0), random_color=False, borders=True)
     return image
+
 
 def show_mask_from_result(image, result: MaskResult, random_color=False, borders=True, centroid=True, bbox=False):
     if random_color:
@@ -261,7 +263,9 @@ def show_mask_from_result(image, result: MaskResult, random_color=False, borders
             contours = [cv2.approxPolyDP(contour, epsilon=0.01, closed=True) for contour in contours]
             mask_image = cv2.drawContours(mask_image, contours, -1, (0, 255, 0, 0.5), thickness=2)
         if centroid:
-                image = cv2.drawMarker(image, (result.cx, result.cy),(255, 0, 0, 1), thickness=1, markerSize=20)
+            image = cv2.drawMarker(image, (result.cx, result.cy), (255, 0, 0, 1), thickness=1, markerSize=20)
         if bbox:
-            image = cv2.rectangle(image, (result.x, result.y), (result.x + result.w, result.y + result.h), (0, 0, 0, 1), thickness=1)
+            image = cv2.rectangle(
+                image, (result.x1, result.y1), (result.x2, result.y2), (0, 0, 0, 1), thickness=1
+            )
     return cv2.addWeighted(image, 1, mask_image, 1, 0)

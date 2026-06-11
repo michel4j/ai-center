@@ -52,7 +52,7 @@ class AiCenterModel(models.Model):
 
 
 class AiCenterApp(AiCenter):
-    def __init__(self, device, model=None, server=None, camera=None, conf_thresh=CONF_THRESH):
+    def __init__(self, device, model=None, server=None, camera=None, conf_thresh=None):
         """
         AiCenter IOC
         :param device:  device root name for PVs
@@ -125,14 +125,14 @@ class AiCenterApp(AiCenter):
                         types += [object_type for _ in valid_xtals]
                     elif object_type == ObjectType.LOOP:
                         # Loop and crystal are centered in the bounding box
-                        xs += [result.x + int(result.w / 2) for result in res_list]
-                        ys += [result.y + int(result.h / 2) for result in res_list]
+                        xs += [result.cx for result in res_list]
+                        ys += [result.cy for result in res_list]
                         scores += [result.score for result in res_list]
                         types += [object_type for _ in res_list]
                     elif object_type == ObjectType.PIN:
                         # Pin centered at 90% horizontally, and 50% vertically
-                        xs += [result.x + int(result.w * 0.9) for result in res_list]
-                        ys += [result.y + int(result.h * 0.5) for result in res_list]
+                        xs += [result.x1 + int(result.w * 0.9) for result in res_list]
+                        ys += [result.y1 + int(result.h * 0.5) for result in res_list]
                         scores += [result.score for result in res_list]
                         types += [object_type for _ in res_list]
 

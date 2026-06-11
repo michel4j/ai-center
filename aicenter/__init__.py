@@ -1,6 +1,5 @@
 from collections import defaultdict
 
-import cv2
 import numpy
 
 from aicenter import img, utils
@@ -14,23 +13,24 @@ except ModuleNotFoundError as e:
 
 logger = get_module_logger(__name__)
 
-CONF_THRESH, NMS_THRESH = 0.125, 0.25
+CONF_THRESH = 0.125
 
 
 class AiCenter:
-    def __init__(self, model=None, server=None, camera=None, conf_thresh=CONF_THRESH):
+    def __init__(self, yolo_model, sam_model=None, server=None, camera=None, threshold=CONF_THRESH):
         self.key = f'{camera}:JPG'
         self.server = server
         self.video = None
-        self.model_path = model
-        conf_thresh = conf_thresh if conf_thresh is not None else CONF_THRESH
+        self.yolo_path = yolo_model
+        self.sam_path = sam_model
+        threshold = threshold if threshold else CONF_THRESH
 
         # prepare neural network for detection
-        self.net = load_model(model, conf_thresh, NMS_THRESH)
+        self.net = load_model(self.yolo_path, threshold)
 
         # setup SAM2 for segmentation
         if TrackingSAM is not None:
-            self.sam = TrackingSAM()
+            self.sam = TrackingSAM(model_path=self.sam_path)
         else:
             self.sam = None
 
@@ -45,13 +45,12 @@ class AiCenter:
         else:
             return frame
 
-
     def process_frame(self, frame):
         if frame is not None:
             # Object detection
             height, width = frame.shape[:2]
             outputs = self.net.predict(frame)
-            results = self.net.process_results(width, height, outputs)
+            results = self.net.group_objects(outputs)
             # Prompt segmentation with objects
             if self.sam:
                 if results:
