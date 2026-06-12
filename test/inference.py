@@ -30,7 +30,7 @@ class AiCenterApp(AiCenter):
         logger.info(f'yolo={self.yolo_path!r}, sam={self.sam_path!r}, server={self.server!r}, camera={self.key!r}')
         self.running = False
         if self.server:
-            self.video = redis.Redis(host=self.server, port=6379, db=0)
+            self.video = redis.Redis(host=self.server, port=6379, db=0, protocol=2)
 
     def run(self, scale=0.5):
         self.running = True
@@ -41,20 +41,34 @@ class AiCenterApp(AiCenter):
             frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
             results = self.process_frame(frame)
 
+            to_track = None
             if results:
                 for label, objects in results.items():
-                    for res in objects:
+                    for i, res in enumerate(objects):
+                        if res.type == 'crystal' and i == 0:
+                            to_track = res
                         x1, y1, x2, y2 = res.box()
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 1)
                         cv2.putText(
-                            frame, f'{res.type}:{res.score:0.2f}', (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                            (255, 0, 0), 1, cv2.LINE_AA
+                            frame,
+                            f'{res.type}:{res.score:0.2f}',
+                            (x1, y1 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255, 0, 0),
+                            1,
+                            cv2.LINE_AA,
                         )
-                        if self.sam and isinstance(res, MaskResult):
-                            frame = show_mask_from_result(frame, res)
+            if self.sam:
+                tracked_result = None
+                if self.sam.tracked_object:
+                    tracked_result = self.process_tracking(frame)
+                elif to_track:
+                    tracked_result = self.process_tracking(frame, to_track)
+                if tracked_result:
+                    frame = show_mask_from_result(frame, tracked_result)
 
-            cv2.imshow(Path(self.yolo_path).stem, frame)
-
+            cv2.imshow('Frame', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
@@ -102,6 +116,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
     if args.images:
         app = AiCenterImagesApp(
             yolo_model=args.yolo,

@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from collections import defaultdict
 
 import numpy
+import cv2
 
 from aicenter import img, utils
 from aicenter.log import get_module_logger
@@ -13,7 +16,7 @@ except ModuleNotFoundError as e:
 
 logger = get_module_logger(__name__)
 
-CONF_THRESH = 0.125
+CONF_THRESH = 0.1
 
 
 class AiCenter:
@@ -46,27 +49,40 @@ class AiCenter:
             return frame
 
     def process_frame(self, frame):
+        tracking = 0
         if frame is not None:
             # Object detection
-            height, width = frame.shape[:2]
             outputs = self.net.predict(frame)
             results = self.net.group_objects(outputs)
-            # Prompt segmentation with objects
-            if self.sam:
-                if results:
-                    self.sam.track_objects(frame, results, width, height)
-                # Segmentation
-                if self.sam.tracked_objects:
-                    mask_outputs = self.sam.predict(frame)
-                    mask_results = self.sam.process_results(*mask_outputs)
-                    if not results:
-                        results = defaultdict(list)
-                    for label in mask_results.keys():
-                        results[label].extend(mask_results[label])
-                        # Keep list sorted by score
-                        results[label] = sorted(results[label], key=lambda result: result.score, reverse=True)
             # Image processing fallback
             if not results:
                 results = img.process_frame(frame)
             return results
         return {}
+
+    def process_tracking(self, frame, result: Result | None = None):
+        """
+        Process tracking for this frame. Provide a new result object to start tracking
+        otherwise simply predict for existing object
+
+        :param frame: image frame
+        :param result: new identified object to track
+        :return: predicted object from tracking
+        """
+
+        if self.sam and frame is not None:
+            height, width = frame.shape[:2]
+
+            if result is not None:
+                # Prompt segmentation with objects
+                self.sam.track_object(frame, result, width, height)
+
+            # Segmentation
+            if not self.sam.tracked_object:
+                return None
+
+            mask, score, obj = self.sam.predict(frame)
+            if mask is not None:
+                return self.sam.process_result(mask, score, obj)
+        return None
+

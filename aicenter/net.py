@@ -20,13 +20,21 @@ class Result:
     x2: float
     y1: float
     y2: float
-    score: float
-    cx: int = 0
-    cy: int = 0
+    score: float = 0.0
+    cx: int = -1
+    cy: int = -1
+    w: int = -1
+    h: int = -1
 
     def __post_init__(self):
-        self.cx = round((self.x1 + self.x2)/2)
-        self.cy = round((self.y1 + self.y2)/2)
+        if self.cx < 0:
+            self.cx = int(round((self.x1 + self.x2)/2))
+        if self.cy < 0:
+            self.cy = int(round((self.y1 + self.y2)/2))
+        if self.w < 0:
+            self.w = int(abs(round(self.x2 - self.x1)))
+        if self.h < 0:
+            self.h = int(abs(round(self.y2 - self.y1)))
 
     def box(self):
         return round(self.x1), round(self.y1), round(self.x2), round(self.y2)
@@ -84,7 +92,7 @@ class UltralyticsYOLO(Net):
         checks.check_requirements("onnxruntime-gpu" if torch.cuda.is_available() else "onnxruntime")
 
     def predict(self, image: numpy.ndarray) -> list:
-        results = self.model.predict(source=image, conf=self.threshold)
+        results = self.model.predict(source=image, conf=self.threshold, verbose=False)
         return results[0].summary()
 
 
