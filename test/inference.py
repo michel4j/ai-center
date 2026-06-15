@@ -25,13 +25,6 @@ CONF_THRESH, NMS_THRESH = 0.25, 0.25
 
 
 class AiCenterApp(AiCenter):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        logger.info(f'yolo={self.yolo_path!r}, sam={self.sam_path!r}, server={self.server!r}, camera={self.key!r}')
-        self.running = False
-        if self.server:
-            self.video = redis.Redis(host=self.server, port=6379, db=0, protocol=2)
-
     def run(self, scale=0.75):
         self.running = True
         while self.running:
@@ -74,45 +67,11 @@ class AiCenterApp(AiCenter):
                 break
 
 
-class AiCenterImagesApp(AiCenterApp):
-    def __init__(self, **kwargs):
-        images_dir = kwargs.pop('images')
-        self.images = self.frame_generator(images_dir)
-        logger.info(f"Simulating stream from {images_dir!r}")
-        super().__init__(**kwargs)
-
-    @staticmethod
-    def frame_generator(images):
-        for filename in sorted(glob.glob(os.path.join(images, "*[.png,.jpg,.jpeg]"))):
-            t = time.perf_counter()
-            try:
-                image = cv2.imread(filename)
-            except TypeError as err:
-                logger.error('Unable to grab frame')
-                return
-            else:
-                yield image
-            delay = t + 0.1 - time.perf_counter()
-            if delay > 0:
-                time.sleep(delay)
-
-    def get_frame(self):
-        try:
-            frame = next(self.images)
-        except StopIteration:
-            self.running = False
-        else:
-            return frame
-
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotate a video stream using a pre-trained object detection model')
-    parser.add_argument('--yolo', type=str, help='Path to YOLO model')
     parser.add_argument('--sam', type=str, help='Path to SAM model')
-    parser.add_argument('--server', type=str, help='Redis camera server address',  default="IOC1608-304.clsi.ca")
-    parser.add_argument('--camera', type=str, help='Redis camera ID', default="0030180F06E5")
-    parser.add_argument('--images', type=str, help='Path to directory of images (simulate stream)')
+    parser.add_argument('--model', type=str, required=True, help='Path to YOLO model')
+    parser.add_argument('--video', type=str, required=True, help='Video URI')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     parser.add_argument('--confidence', type=float, help='Object Detection Confidence Threshold')
     args = parser.parse_args()
@@ -120,19 +79,11 @@ if __name__ == '__main__':
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
-    if args.images:
-        app = AiCenterImagesApp(
-            yolo_model=args.yolo,
-            sam_model=args.sam,
-            images=args.images,
-            threshold=args.confidence
-        )
-    else:
-        app = AiCenterApp(
-            yolo_model=args.yolo,
-            sam_model=args.sam,
-            server=args.server,
-            camera=args.camera,
-            threshold=args.confidence
-        )
+
+    app = AiCenterApp(
+        model=args.model,
+        sam_model=args.sam,
+        video=args.video,
+        threshold=args.confidence
+    )
     app.run()

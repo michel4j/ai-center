@@ -1,31 +1,45 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
-import glob
 import logging
-import os
-import time
+import re
 import warnings
-from pathlib import Path
+from typing import Generator
 
 import cv2
-import redis
-
-from aicenter import AiCenter
-from aicenter.log import get_module_logger
-
 from ultralytics import YOLO
 
+from aicenter import utils
+from aicenter.log import get_module_logger
 
 warnings.filterwarnings("ignore")
 logger = get_module_logger("inference")
 
+VIDEO_URI_PATTERN = re.compile(
+    r'^(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*)://'  # Protocol/Scheme
+    r'(?P<host>[^:/ \n]*)'  # Hostname or IP address
+    r'(?::(?P<port>\d+))?'  # Optional port number
+    r'(?P<path>/[^?#\s]*)?'  # Optional path
+)
+
 
 class TrackingApp:
-    def __init__(self, model, images):
+    images: Generator
+    running: bool = False
+
+    def __init__(self, model, uri):
         self.model = YOLO(model, task="detect")
-        self.images = self.frame_generator(images)
-        self.running = False
-        logger.info(f"Simulating stream from {images!r}")
+        self.uri = uri
+        match = VIDEO_URI_PATTERN.match(self.uri)
+        if match:
+            self.src = {k: v for k, v in match.groupdict().items() if v is not None}
+            frame_generator = utils.VIDEO_SOURCES.get(self.src['scheme'], None)
+            if frame_generator is None:
+                raise NotImplementedError(f'Unsupported Video Source Scheme: {self.src["scheme"]}')
+            self.images = frame_generator(**self.src)
+        else:
+            raise NotImplementedError(f'Unsupported Video Source URI: {self.uri}')
 
     def run(self, scale=0.5):
         self.running = True
@@ -34,7 +48,7 @@ class TrackingApp:
             if raw_frame is None:
                 continue
             frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-            results = self.model.track(frame, persist=True, conf=0.01)
+            results = self.model.track(frame, persist=True, conf=0.01, tracker="bytetrack.yaml")
 
             # Visualize results on the frame
             annotated_frame = results[0].plot()
@@ -43,21 +57,6 @@ class TrackingApp:
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
         cv2.destroyAllWindows()
-
-    @staticmethod
-    def frame_generator(images):
-        for filename in sorted(glob.glob(os.path.join(images, "*[.png,.jpg,.jpeg]"))):
-            t = time.perf_counter()
-            try:
-                image = cv2.imread(filename)
-            except TypeError as err:
-                logger.error('Unable to grab frame')
-                return
-            else:
-                yield image
-            delay = t + 0.1 - time.perf_counter()
-            if delay > 0:
-                time.sleep(delay)
 
     def get_frame(self):
         try:
@@ -70,8 +69,8 @@ class TrackingApp:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Annotate a video stream using a pre-trained object detection model')
-    parser.add_argument('--model', type=str, help='Path to YOLO model')
-    parser.add_argument('--images', type=str, help='Path to directory of images (simulate stream)')
+    parser.add_argument('--model', type=str, required=True, help='Path to YOLO model')
+    parser.add_argument('--video', type=str, required=True, help='Video URI')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     args = parser.parse_args()
     if args.verbose:
@@ -79,8 +78,5 @@ if __name__ == '__main__':
     else:
         logging.basicConfig(level=logging.INFO)
 
-    app = TrackingApp(
-        model=args.model,
-        images=args.images,
-    )
+    app = TrackingApp(model=args.model, uri=args.video)
     app.run()

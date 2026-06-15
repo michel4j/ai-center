@@ -21,6 +21,7 @@ class Result:
     y1: float
     y2: float
     score: float = 0.0
+    id: int = 0
     cx: int = -1
     cy: int = -1
     w: int = -1
@@ -41,9 +42,10 @@ class Result:
 
 
 class Net:
-    def __init__(self, model_path, threshold: float):
+    def __init__(self, model_path, threshold: float, tracking: bool = True):
         self.model_path = model_path
         self.threshold = threshold
+        self.tracking = tracking
         self.load_model()
         self.setup_model()
 
@@ -60,12 +62,13 @@ class Net:
 
     @staticmethod
     def group_objects(items: list[dict], **kwargs):
-        results = defaultdict(list)
+        results = {label: [] for label in ['loop', 'crystal', 'pin']}
         for item in items:
             obj = Result(
                 type=item['name'],
                 score=item['confidence'],
-                **item['box']
+                **item['box'],
+                id=item.get('track_id', 0),
             )
             logging.debug(f'{obj.type} found at: {obj.cx} {obj.cy}, prob={obj.score}')
             results[obj.type].append(obj)
@@ -92,15 +95,18 @@ class UltralyticsYOLO(Net):
         checks.check_requirements("onnxruntime-gpu" if torch.cuda.is_available() else "onnxruntime")
 
     def predict(self, image: numpy.ndarray) -> list:
-        results = self.model.predict(source=image, conf=self.threshold, verbose=False)
+        if self.tracking:
+            results = self.model.track(source=image, conf=self.threshold, verbose=False, persist=True, tracker="botsort.yaml")
+        else:
+            results = self.model.predict(source=image, conf=self.threshold, verbose=False)
         return results[0].summary()
 
 
-def load_model(model_path: str | Path, threshold) -> Net:
+def load_model(model_path: str | Path, threshold, tracking: bool = False) -> Net:
     for model_class in [UltralyticsYOLO,]:
         try:
             logging.info(f'Loading {model_class.__name__} model from {model_path}')
-            net = model_class(model_path, threshold)
+            net = model_class(model_path, threshold, tracking=tracking)
         except Exception as err:
             logging.warning(f'Unable to load model of type {model_class.__name__}: {err}!')
             continue
