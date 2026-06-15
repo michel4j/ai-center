@@ -32,7 +32,7 @@ class AiCenterApp(AiCenter):
         if self.server:
             self.video = redis.Redis(host=self.server, port=6379, db=0, protocol=2)
 
-    def run(self, scale=0.5):
+    def run(self, scale=0.75):
         self.running = True
         while self.running:
             raw_frame = self.get_frame()
@@ -69,6 +69,7 @@ class AiCenterApp(AiCenter):
                     frame = show_mask_from_result(frame, tracked_result)
 
             cv2.imshow('Frame', frame)
+            time.sleep(1)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
@@ -102,6 +103,7 @@ class AiCenterImagesApp(AiCenterApp):
             self.running = False
         else:
             return frame
+
 
 
 if __name__ == '__main__':

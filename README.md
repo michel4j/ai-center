@@ -17,8 +17,8 @@ pip install ai-center
 2. Copy the start.sh file from the `deploy` directory into this directory.
 3. Copy the ai-centering.service unit file from the `deploy` into your /etc/systemd/system directory.
 4. Edit the files from (2) and (3) above to reflect your environment and to set all the required instance parameters
-4. Enable the unit file using your system commands. For example, `systemctl enable ai-centering`.
-5. Start the init file using your system commands. For example `systemctl start ai-centering`.
+5. Enable the unit file using your system commands. For example, `systemctl enable ai-centering`.
+6. Start the init file using your system commands. For example `systemctl start ai-centering`.
 
 You can manage the instance daemon through procServ, by telneting to the configured port. 
 

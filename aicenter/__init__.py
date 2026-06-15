@@ -32,7 +32,7 @@ class AiCenter:
         self.net = load_model(self.yolo_path, threshold)
 
         # setup SAM2 for segmentation
-        if TrackingSAM is not None:
+        if sam_model is not None:
             self.sam = TrackingSAM(model_path=self.sam_path)
         else:
             self.sam = None
