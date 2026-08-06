@@ -50,9 +50,7 @@ class TrackingApp:
             if raw_frame is None:
                 continue
             frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-            t = time.time_ns()
             results = self.model.track(frame, persist=True, conf=0.01, tracker="bytetrack.yaml")
-            print(f'Processing time: {(time.time_ns() - t) / 1e6:.4f}ms')
 
             # Visualize results on the frame
             annotated_frame = results[0].plot()
