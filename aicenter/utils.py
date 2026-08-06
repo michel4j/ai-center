@@ -97,7 +97,37 @@ def redis_frame_generator(host: str, path: str, port: int = None, **kwargs) -> G
             time.sleep(delay)
 
 
+def http_frame_generator(url: str, **kwargs) -> Generator:
+    """
+    Generate frames from HTTP stream
+
+    :param url: URL of the HTTP stream
+    :return: Generator
+    """
+    logger.info(f"Fetching video stream from {url!r}")
+    cap = cv2.VideoCapture(url)
+    while True:
+        t = time.perf_counter()
+        try:
+            ret, frame = cap.read()
+
+        except TypeError as err:
+            logger.error(f'Unable to fetch frame: {err}')
+            logger.exception(err)
+        except KeyboardInterrupt:
+            logger.info('Exiting ...')
+            return
+        else:
+            yield frame
+
+        delay = t + 0.1 - time.perf_counter()
+        if delay > 0:
+            time.sleep(delay)
+
+
 VIDEO_SOURCES = {
     'file': file_frame_generator,
-    'redis': redis_frame_generator
+    'redis': redis_frame_generator,
+    'http': http_frame_generator,
+    'https': http_frame_generator,
 }
