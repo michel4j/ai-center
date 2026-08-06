@@ -8,6 +8,7 @@ import warnings
 from typing import Generator
 
 import cv2
+import time
 from ultralytics import YOLO
 
 from aicenter import utils
@@ -43,17 +44,20 @@ class TrackingApp:
 
     def run(self, scale=0.5):
         self.running = True
+        cv2.namedWindow('AI-Centering Viewer', cv2.WINDOW_NORMAL)
         while self.running:
             raw_frame = self.get_frame()
             if raw_frame is None:
                 continue
             frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            t = time.time_ns()
             results = self.model.track(frame, persist=True, conf=0.01, tracker="bytetrack.yaml")
+            print(f'Processing time: {(time.time_ns() - t) / 1e6:.4f}ms')
 
             # Visualize results on the frame
             annotated_frame = results[0].plot()
 
-            cv2.imshow("YOLO Tracking", annotated_frame)
+            cv2.imshow('AI-Centering Viewer', annotated_frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
         cv2.destroyAllWindows()

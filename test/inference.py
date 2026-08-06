@@ -25,14 +25,26 @@ CONF_THRESH, NMS_THRESH = 0.25, 0.25
 
 
 class AiCenterApp(AiCenter):
-    def run(self, scale=0.75):
+    def run(self, scale=1.2):
         self.running = True
+        cv2.namedWindow('AI-Centering Viewer', cv2.WINDOW_NORMAL)
+        self.waiting = False
         while self.running:
+
+            if self.waiting:
+                time.sleep(0.1)
+                if cv2.waitKey(1) & 0xFF == ord('s'):
+                    self.waiting = False
+                    time.sleep(0.1)
+                continue
+
             raw_frame = self.get_frame()
             if raw_frame is None:
                 continue
             frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            t = time.time_ns()
             results = self.process_frame(frame)
+            print(f'Processing time: {(time.time_ns() - t) / 1e6:.4f}ms')
 
             to_track = None
             if results:
@@ -61,10 +73,13 @@ class AiCenterApp(AiCenter):
                 if tracked_result:
                     frame = show_mask_from_result(frame, tracked_result)
 
-            cv2.imshow('Frame', frame)
-            time.sleep(1)
+            cv2.imshow('AI-Centering Viewer', frame)
+            time.sleep(.1)
+
             if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                self.running = False
+            elif cv2.waitKey(1) & 0xFF == ord('s'):
+                self.waiting = not self.waiting
 
 
 if __name__ == '__main__':
