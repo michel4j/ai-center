@@ -8,7 +8,7 @@ import warnings
 from typing import Generator
 
 import cv2
-import time
+from datetime import datetime
 from ultralytics import YOLO
 
 from aicenter import utils
@@ -28,6 +28,8 @@ VIDEO_URI_PATTERN = re.compile(
 class TrackingApp:
     images: Generator
     running: bool = False
+    clicked: bool = False
+
 
     def __init__(self, model, uri):
         self.model = YOLO(model, task="detect")
@@ -42,22 +44,44 @@ class TrackingApp:
         else:
             raise NotImplementedError(f'Unsupported Video Source URI: {self.uri}')
 
-    def run(self, scale=0.5):
+    def mouse_callback(self, event, x, y, flags, param):
+        # Check if the left mouse button was clicked
+        if event == cv2.EVENT_LBUTTONDOWN:
+            self.clicked = True
+
+    def run(self, scale=1.0):
         self.running = True
-        cv2.namedWindow('AI-Centering Viewer', cv2.WINDOW_NORMAL)
+        window_name = "AI-Centering Viewer"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, 1280, 1024)
+        cv2.setMouseCallback(window_name, self.mouse_callback)
+        index = 0
+        suffix = datetime.now().strftime('%Y%m%d-%H%M%S')
         while self.running:
-            raw_frame = self.get_frame()
-            if raw_frame is None:
+            frame = self.get_frame()
+            if frame is None:
                 continue
-            frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-            results = self.model.track(frame, persist=True, conf=0.01, tracker="bytetrack.yaml")
+
+            #frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            #results = self.model.track(frame, persist=True, conf=0.01, tracker="bytetrack.yaml")
+            results = self.model.predict(frame, conf=0.01)
 
             # Visualize results on the frame
             annotated_frame = results[0].plot()
 
-            cv2.imshow('AI-Centering Viewer', annotated_frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+            cv2.imshow(window_name, annotated_frame)
+            while True:
+                key = cv2.waitKey(10)
+                if self.clicked or key in [32, 13]:
+                    self.clicked = False
+                    break
+                elif key == ord('s'):
+                    cv2.imwrite(f'/home/michel/target-{suffix}-{index:04d}.png', annotated_frame)
+                    index += 1
+                    break
+                elif key in [27, ord('q')]:
+                    self.running = False
+                    break
         cv2.destroyAllWindows()
 
     def get_frame(self):

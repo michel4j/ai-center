@@ -25,9 +25,10 @@ CONF_THRESH, NMS_THRESH = 0.25, 0.25
 
 
 class AiCenterApp(AiCenter):
-    def run(self, scale=1.2):
+    def run(self, scale=1.0):
         self.running = True
         cv2.namedWindow('AI-Centering Viewer', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("AI-Centering Viewer", 800, 600)
         self.waiting = False
         while self.running:
 
@@ -41,6 +42,8 @@ class AiCenterApp(AiCenter):
             raw_frame = self.get_frame()
             if raw_frame is None:
                 continue
+
+            print(raw_frame.shape)
             frame = cv2.resize(raw_frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
             t = time.time_ns()
             results = self.process_frame(frame)
