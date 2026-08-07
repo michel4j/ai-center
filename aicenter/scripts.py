@@ -17,9 +17,10 @@ def server_main():
     parser = argparse.ArgumentParser(description='Ai Centering')
     parser.add_argument('-v', action='store_true', help='Verbose Logging')
     parser.add_argument('--device', type=str, help='Device Name', required=True)
-    parser.add_argument('--model', type=str, help='Darknet Model Path', required=True)
-    parser.add_argument('--server', type=str, help='Video Server', required=True)
-    parser.add_argument('--camera', type=str, help='Camera ID', required=True)
+    parser.add_argument('--model', type=str, help='YOLOModel Path', required=True)
+    parser.add_argument('--sam', type=str, help='SAM2 Model Path')
+    parser.add_argument('--video', type=str, help='Video URI', required=True)
+    parser.add_argument('--confidence', type=float, default=0.1, help='Object Detection Confidence Threshold')
 
     args = parser.parse_args()
     if args.v:
@@ -28,7 +29,13 @@ def server_main():
         log.log_to_console(logging.INFO)
 
     # initialize App
-    app = ioc.AiCenterApp(args.device, model=args.model, server=args.server, camera=args.camera)
+    app = ioc.AiCenterApp(
+        args.device,
+        model=args.model,
+        video=args.video,
+        threshold=args.confidence,
+        sam=args.sam,
+    )
     reactor.addSystemEventTrigger('before', 'shutdown', app.shutdown)   # make sure app is properly shutdown
     sys.exit(
         reactor.run()

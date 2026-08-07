@@ -1,7 +1,11 @@
-from collections import defaultdict
+from __future__ import annotations
 
-import cv2
+import re
+from pathlib import Path
+from typing import Any
+
 import numpy
+import cv2
 
 from aicenter import img, utils
 from aicenter.log import get_module_logger
@@ -14,60 +18,94 @@ except ModuleNotFoundError as e:
 
 logger = get_module_logger(__name__)
 
-CONF_THRESH, NMS_THRESH = 0.125, 0.25
+CONF_THRESH = 0.1
+VIDEO_URI_PATTERN = re.compile(
+    r'^(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*)://'  # Protocol/Scheme
+    r'(?P<host>[^:/ \n]*)'                      # Hostname or IP address
+    r'(?::(?P<port>\d+))?'                      # Optional port number
+    r'(?P<path>/[^?#\s]*)?'                     # Optional path
+)
 
 
 class AiCenter:
-    def __init__(self, model=None, server=None, camera=None, conf_thresh=CONF_THRESH):
-        self.key = f'{camera}:JPG'
-        self.server = server
+    sam: Any = None
+    running: bool = False
+
+    def __init__(self, model, video, threshold=CONF_THRESH, sam_model: str | Path = '', tracking=True):
+        """
+        AiCenter
+        :param model: YOLO model path
+        :param video: Video URI
+        :param threshold: confidence threshold
+        :param sam_model: SAM2 model path if using segmentation
+        :param tracking: enable tracking
+        """
+        self.server = video
         self.video = None
         self.model_path = model
-        conf_thresh = conf_thresh if conf_thresh is not None else CONF_THRESH
+        self.sam_path = sam_model
+        threshold = threshold if threshold else CONF_THRESH
 
         # prepare neural network for detection
-        self.net = load_model(model, conf_thresh, NMS_THRESH)
+        self.net = load_model(self.model_path, threshold, tracking=tracking)
+
+        self.uri = video
+        match = VIDEO_URI_PATTERN.match(self.uri)
+        if match:
+            self.src = {k: v for k, v in match.groupdict().items() if v is not None}
+            frame_generator = utils.VIDEO_SOURCES.get(self.src['scheme'], None)
+            if frame_generator is None:
+                raise NotImplementedError(f'Unsupported Video Source Scheme: {self.src["scheme"]}')
+            self.images = frame_generator(**self.src)
+        else:
+            raise NotImplementedError(f'Unsupported Video Source URI: {self.uri}')
 
         # setup SAM2 for segmentation
-        if TrackingSAM is not None:
-            self.sam = TrackingSAM()
-        else:
-            self.sam = None
+        if self.sam_path:
+            self.sam = TrackingSAM(model_path=self.sam_path)
 
     def get_frame(self):
         try:
-            data = self.video.get(self.key)
-            image = numpy.frombuffer(data, numpy.uint8)
-            frame = cv2.imdecode(image, cv2.IMREAD_COLOR)
-        except TypeError as err:
-            logger.error('Unable to grab frame')
-            return None
+            frame = next(self.images)
+        except StopIteration:
+            self.running = False
         else:
             return frame
 
-
     def process_frame(self, frame):
         if frame is not None:
-            # Object detection
-            height, width = frame.shape[:2]
+            # Object detection with YOLO
             outputs = self.net.predict(frame)
-            results = self.net.process_results(width, height, outputs)
-            # Prompt segmentation with objects
-            if self.sam:
-                if results:
-                    self.sam.track_objects(frame, results, width, height)
-                # Segmentation
-                if self.sam.tracked_objects:
-                    mask_outputs = self.sam.predict(frame)
-                    mask_results = self.sam.process_results(*mask_outputs)
-                    if not results:
-                        results = defaultdict(list)
-                    for label in mask_results.keys():
-                        results[label].extend(mask_results[label])
-                        # Keep list sorted by score
-                        results[label] = sorted(results[label], key=lambda result: result.score, reverse=True)
+            results = self.net.group_objects(outputs)
             # Image processing fallback
             if not results:
                 results = img.process_frame(frame)
             return results
         return {}
+
+    def process_tracking(self, frame, result: Result | None = None):
+        """
+        Process tracking for this frame. Provide a new result object to start tracking
+        otherwise simply predict for existing object
+
+        :param frame: image frame
+        :param result: new identified object to track
+        :return: predicted object from tracking
+        """
+
+        if self.sam and frame is not None:
+            height, width = frame.shape[:2]
+
+            if result is not None:
+                # Prompt segmentation with objects
+                self.sam.track_object(frame, result, width, height)
+
+            # Segmentation
+            if not self.sam.tracked_object:
+                return None
+
+            mask, score, obj = self.sam.predict(frame)
+            if mask is not None:
+                return self.sam.process_result(mask, score, obj)
+        return None
+
