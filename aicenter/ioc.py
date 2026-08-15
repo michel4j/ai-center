@@ -63,17 +63,16 @@ class AiCenterModel(models.Model):
     pin_valid = models.Enum('pin:valid', choices=StatusType, default=StatusType.INVALID, desc="Pin Valid")
 
 
-class AiCenterApp(AiCenter):
-    def __init__(self, device, model, video, sam=None, threshold=None):
+class IOCApp(AiCenter):
+    def __init__(self, device, model, video, threshold=None):
         """
         AiCenter IOC
         :param device:  device root name for PVs
         :param model:  YOLO Model path
         :param video:  Video URI
-        :param sam:  SAM2 Model path
         """
-        super().__init__(model=model, video=video, sam_model=sam, threshold=threshold, tracking=True)
-        logger.info(f'device={device!r}, yolo={model!r}, sam={sam!r}, video={video!r}')
+        super().__init__(model=model, video=video, threshold=threshold, tracking=True)
+        logger.info(f'device={device!r}, model={model!r}, video={video!r}')
         self.running = False
         self.enabled = True
         self.tracking = False
@@ -151,7 +150,6 @@ class AiCenterApp(AiCenter):
                     self.ioc.num_crystals.put(0)
 
                 if label == 'crystal' and best.score:
-                    # SAM2 Tracking?
                     pass
 
     def do_enable(self, pv, value, ioc):

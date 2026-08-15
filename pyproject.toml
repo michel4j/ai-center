@@ -1,10 +1,9 @@
 [project]
 name = "ai-center"
 dynamic = ["version"]
-license = "MIT AND Apache-2.0"
+license = "MIT"
 license-files = [
     "LICENSE",
-    "aicenter/lib/LICENSE",
 ]
 description = "Automated Sample Alignment for MX using a YOLO Model"
 authors = [
@@ -42,6 +41,8 @@ test = [ "opencv-contrib-python" ]
 
 [tool.poetry.scripts]
 "app.server" = "aicenter.scripts:server_main"
+"app.inference" = "aicenter.scripts:inference_main"
+
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]

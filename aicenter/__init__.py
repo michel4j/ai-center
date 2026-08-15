@@ -11,10 +11,6 @@ from aicenter import img, utils
 from aicenter.log import get_module_logger
 from aicenter.net import load_model, Result
 
-try:
-    from aicenter.sam import TrackingSAM
-except ModuleNotFoundError as e:
-    TrackingSAM = None
 
 logger = get_module_logger(__name__)
 
@@ -60,10 +56,6 @@ class AiCenter:
         else:
             raise NotImplementedError(f'Unsupported Video Source URI: {self.uri}')
 
-        # setup SAM2 for segmentation
-        if self.sam_path:
-            self.sam = TrackingSAM(model_path=self.sam_path)
-
     def get_frame(self):
         try:
             frame = next(self.images)
@@ -82,30 +74,4 @@ class AiCenter:
                 results = img.process_frame(frame)
             return results
         return {}
-
-    def process_tracking(self, frame, result: Result | None = None):
-        """
-        Process tracking for this frame. Provide a new result object to start tracking
-        otherwise simply predict for existing object
-
-        :param frame: image frame
-        :param result: new identified object to track
-        :return: predicted object from tracking
-        """
-
-        if self.sam and frame is not None:
-            height, width = frame.shape[:2]
-
-            if result is not None:
-                # Prompt segmentation with objects
-                self.sam.track_object(frame, result, width, height)
-
-            # Segmentation
-            if not self.sam.tracked_object:
-                return None
-
-            mask, score, obj = self.sam.predict(frame)
-            if mask is not None:
-                return self.sam.process_result(mask, score, obj)
-        return None
 

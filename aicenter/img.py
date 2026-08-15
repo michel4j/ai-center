@@ -6,6 +6,7 @@ from aicenter.net import Result
 
 logger = get_module_logger(__name__)
 
+
 def find_loop(orig, offset=10, scale=0.5, orientation='left'):
     raw = cv2.flip(orig, 1) if orientation != 'left' else orig
     y_max, x_max = orig.shape[:2]
@@ -27,7 +28,7 @@ def find_loop(orig, offset=10, scale=0.5, orientation='left'):
         'mean': avg,
         'std': stdev,
         'signal': avg / stdev,
-        'found': 0,                 # 0 = nothing found, 1 = tip found, 2 = ellipse fitted.
+        'found': 0,  # 0 = nothing found, 1 = tip found, 2 = ellipse fitted.
         'center-x': tip_x / scale,
         'center-y': tip_y / scale,
         'score': 0.0,
@@ -47,8 +48,8 @@ def find_loop(orig, offset=10, scale=0.5, orientation='left'):
         search_width = width / 5
         idx = 3
         valid = (
-            (numpy.abs(profiles[:, idx] - profiles[:, idx].mean()) < 2 * profiles[:, idx].std())
-            & (profiles[:, idx] < 0.8 * height)
+                (numpy.abs(profiles[:, idx] - profiles[:, idx].mean()) < 2 * profiles[:, idx].std())
+                & (profiles[:, idx] < 0.8 * height)
         )
         if valid.sum() > 5:
             profiles = profiles[valid]
@@ -60,10 +61,12 @@ def find_loop(orig, offset=10, scale=0.5, orientation='left'):
         info['y'] = tip_y / scale
         valid = (profiles[:, 0] >= tip_x - search_width)
 
-        vertices = numpy.concatenate((
-            profiles[:, (0, 1)][valid],
-            profiles[:, (0, 2)][valid][::-1]
-        )).astype(int)
+        vertices = numpy.concatenate(
+            (
+                profiles[:, (0, 1)][valid],
+                profiles[:, (0, 2)][valid][::-1]
+            )
+        ).astype(int)
         sizes = profiles[:, 3][valid]
 
         if len(vertices) > 5:
@@ -88,9 +91,9 @@ def find_loop(orig, offset=10, scale=0.5, orientation='left'):
             info['loop-height'] = ellipse_h
             info['loop-angle'] = angle
 
-            info['loop-start'] = ellipse_x + info['loop-width']/2
-            info['loop-end'] = ellipse_x - info['loop-width']/2
-            info['score'] = 100*(1 - abs(info['loop-start'] - info['x'])/info['loop-width'])
+            info['loop-start'] = ellipse_x + info['loop-width'] / 2
+            info['loop-end'] = ellipse_x - info['loop-width'] / 2
+            info['score'] = 100 * (1 - abs(info['loop-start'] - info['x']) / info['loop-width'])
 
         info['sizes'] = (sizes / scale).astype(int)
         info['points'] = [(int(x / scale), int(y / scale)) for x, y in vertices]
