@@ -75,7 +75,7 @@ def redis_frame_generator(host: str, path: str, port: int = None, **kwargs) -> G
     port = 6379 if port is None else int(port)
 
     server = redis.Redis(host=host, port=port, db=0, protocol=2)
-    key = f"{path.strip('/')}:JPG"
+    key = path.strip('/')
     logger.info(f"Fetching video stream from {key!r}")
     while True:
         t = time.perf_counter()
