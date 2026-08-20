@@ -1,9 +1,0 @@
-#!/usr/bin/env python3
-
-import sys
-from aicenter import scripts
-
-
-if __name__ == '__main__':
-    sys.exit(scripts.server_main())
-
