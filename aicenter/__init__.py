@@ -40,10 +40,10 @@ class AiCenter:
         self.video = None
         self.model_path = model
         self.sam_path = sam_model
-        threshold = threshold if threshold else CONF_THRESH
+        self.threshold = threshold if threshold else CONF_THRESH
 
         # prepare neural network for detection
-        self.net = load_model(self.model_path, threshold, tracking=tracking)
+        self.net = load_model(self.model_path, self.threshold, tracking=tracking)
 
         self.uri = video
         match = VIDEO_URI_PATTERN.match(self.uri)

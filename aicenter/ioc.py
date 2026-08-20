@@ -3,8 +3,6 @@ import time
 import warnings
 
 import numpy
-import redis
-from matplotlib.pyplot import yscale
 
 from aicenter import Result
 
@@ -15,9 +13,7 @@ from enum import IntEnum
 from devioc import models, log
 import gepics
 
-from . import utils
 from . import AiCenter
-
 
 logger = log.get_module_logger('aicenter')
 
@@ -142,7 +138,7 @@ class IOCApp(AiCenter):
                     boxes = numpy.array([[obj.x1, obj.y1, obj.x2, obj.y2] for obj in extra]).ravel().astype(int)
                     scores = numpy.array([obj.score for obj in extra]).ravel()
                     ids = numpy.array([obj.id for obj in extra]).ravel()
-                    self.ioc.num_crystals.put(num_crystals)     # put this first
+                    self.ioc.num_crystals.put(num_crystals)  # put this first
                     self.ioc.scores.put(scores)
                     self.ioc.extra_ids.put(ids)
                     self.ioc.crystals.put(boxes)

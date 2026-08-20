@@ -26,9 +26,18 @@ dependencies = [
     "devioc (>=2025.6.2,<2026.0.0)",
 ]
 
+[project.optional-dependencies]
+view = [
+    "opencv-contrib-python >=4.13.0.92,<5.0.0.0"
+]
+model = [
+    "huggingface-hub ==1.28.0"
+]
+
 [project.urls]
 Homepage = "https://github.com/michel4j/ai-center"
 Issues = "https://github.com/michel4j/ai-center/issues"
+Models = "https://huggingface.co/michel4j/mxsamples"
 
 [tool.poetry]
 packages = [
@@ -36,13 +45,9 @@ packages = [
 ]
 version = "0.0.0"
 
-[tool.poetry.extras]
-test = [ "opencv-contrib-python" ]
-
 [tool.poetry.scripts]
-"app.server" = "aicenter.scripts:server_main"
-"app.inference" = "aicenter.scripts:inference_main"
-
+"app.epics" = "aicenter.scripts:server_main"
+"app.view" = "aicenter.scripts:inference_main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
